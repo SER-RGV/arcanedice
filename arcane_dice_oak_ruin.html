@@ -1,0 +1,2741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Arcane Dice: Oak &amp; Ruin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #1c140d;
+      font-family: 'Inter', sans-serif;
+      touch-action: none;
+    }
+    .font-display {
+      font-family: 'Cinzel', serif;
+    }
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    /* Custom Parchment & Brass Tabletop Styling */
+    .tabletop-panel {
+      background: linear-gradient(145deg, rgba(44, 30, 20, 0.92), rgba(26, 18, 12, 0.95));
+      border: 2px solid #b88a44;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 224, 166, 0.25);
+      backdrop-filter: blur(8px);
+    }
+    .parchment-card {
+      background: linear-gradient(160deg, #f5ebd6 0%, #e4d1ad 100%);
+      border: 2px solid #8c6229;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.55), inset 0 0 18px rgba(139, 94, 36, 0.22);
+      color: #2c1d11;
+    }
+    .brass-btn {
+      background: linear-gradient(180deg, #e0aa4b 0%, #b47b24 100%);
+      border: 2px solid #fce09b;
+      color: #1f1308;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+      transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
+    }
+    .brass-btn:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+    .brass-btn:active {
+      transform: translateY(2px) scale(0.98);
+    }
+    .die-net-cell {
+      transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .die-net-cell.active-roll {
+      transform: scale(1.16);
+      box-shadow: 0 0 16px rgba(250, 204, 21, 0.95);
+      border-color: #fef08a;
+      z-index: 10;
+    }
+    @keyframes floatUpFade {
+      0% { opacity: 0; transform: translate(-50%, 0px) scale(0.75); }
+      18% { opacity: 1; transform: translate(-50%, -14px) scale(1.12); }
+      100% { opacity: 0; transform: translate(-50%, -52px) scale(0.95); }
+    }
+    .floating-dmg {
+      position: absolute;
+      pointer-events: none;
+      font-family: 'Cinzel', serif;
+      font-weight: 900;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7);
+      animation: floatUpFade 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      white-space: nowrap;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.45); }
+      50% { box-shadow: 0 0 22px rgba(245, 158, 11, 0.9); }
+    }
+    .rune-ready-glow {
+      animation: pulseGlow 1.5s infinite ease-in-out;
+    }
+    .enemy-hp-container {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      pointer-events: none;
+      width: 46px;
+      height: 7px;
+      background: rgba(15, 12, 10, 0.88);
+      border: 1px solid rgba(251, 191, 36, 0.65);
+      border-radius: 999px;
+      padding: 1px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.75);
+      transition: opacity 0.15s ease;
+    }
+    .enemy-hp-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #dc2626, #f97316);
+      transition: width 0.12s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <!-- Main 3D Canvas -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Floating 3D-Projected Enemy Health Bars & Damage Callout Layer -->
+  <div id="enemy-bars-layer" class="fixed inset-0 pointer-events-none overflow-hidden z-10"></div>
+  <div id="floating-layer" class="fixed inset-0 pointer-events-none overflow-hidden z-10"></div>
+
+  <!-- Top HUD Bar (Visible in PLAYING / UPGRADE / PAUSED) -->
+  <div id="hud-top" class="fixed top-0 left-0 right-0 p-3 sm:p-4 flex items-start justify-between gap-2 pointer-events-none z-20 hidden">
+    <!-- Left: Wizard Health, Rune XP Meter & Wave -->
+    <div class="flex flex-col gap-2 pointer-events-auto">
+      <div class="tabletop-panel rounded-2xl px-3.5 py-2.5 flex items-center gap-3 sm:gap-4">
+        <!-- Wizard Emblem & Hearts -->
+        <div class="flex flex-col">
+          <div class="flex items-center gap-1.5">
+            <span class="text-amber-300 font-display font-bold text-xs sm:text-sm tracking-wider uppercase">Arcanist</span>
+            <span id="hud-hp-text" class="text-xs font-semibold text-amber-100/80">100/100</span>
+          </div>
+          <div class="w-28 sm:w-36 h-3 bg-stone-900/90 rounded-full overflow-hidden border border-amber-700/60 mt-1 p-0.5">
+            <div id="hud-hp-bar" class="h-full rounded-full bg-gradient-to-r from-red-600 via-rose-500 to-amber-400 transition-all duration-200" style="width: 100%;"></div>
+          </div>
+        </div>
+
+        <div class="h-8 w-px bg-amber-700/40"></div>
+
+        <!-- Rune Engraving Gauge -->
+        <div class="flex flex-col">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-cyan-300 font-display font-bold text-xs sm:text-sm tracking-wider uppercase">Rune Forge</span>
+            <span id="hud-rune-count" class="text-xs font-bold text-cyan-200">0 / 3</span>
+          </div>
+          <div class="w-24 sm:w-32 h-3 bg-stone-900/90 rounded-full overflow-hidden border border-cyan-700/60 mt-1 p-0.5">
+            <div id="hud-rune-bar" class="h-full rounded-full bg-gradient-to-r from-indigo-500 via-cyan-400 to-emerald-300 transition-all duration-200" style="width: 0%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Wave & Combo Pill -->
+      <div class="flex items-center gap-2">
+        <div class="tabletop-panel rounded-xl px-3 py-1.5 flex items-center gap-2">
+          <span class="text-amber-400/90 text-xs uppercase tracking-wider font-semibold">Wave</span>
+          <span id="hud-wave" class="font-display font-bold text-amber-100 text-base sm:text-lg">1</span>
+        </div>
+        <div id="hud-combo-pill" class="tabletop-panel rounded-xl px-3 py-1.5 flex items-center gap-1.5 opacity-0 transition-opacity duration-200">
+          <span class="text-amber-300 font-display font-black text-sm sm:text-base" id="hud-combo-text">2x</span>
+          <span class="text-amber-100/80 text-xs uppercase tracking-wide">Combo</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center/Right: Score & Controls -->
+    <div class="flex items-start gap-2 sm:gap-3 pointer-events-auto">
+      <div class="tabletop-panel rounded-2xl px-3.5 py-2 text-right">
+        <div class="text-[10px] sm:text-xs uppercase tracking-widest text-amber-300/80 font-semibold">Score</div>
+        <div id="hud-score" class="font-display font-black text-lg sm:text-2xl text-amber-100 leading-tight">0</div>
+      </div>
+
+      <button id="btn-pause" aria-label="Pause Game" class="tabletop-panel rounded-2xl p-2.5 sm:p-3 text-amber-200 hover:text-white hover:border-amber-400 active:scale-95 transition">
+        <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Bottom HUD: Interactive 6-Face Die Inspector & Cooldown / Roll Banner -->
+  <div id="hud-bottom" class="fixed bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 flex items-end justify-between pointer-events-none z-20 hidden">
+    <!-- Left Space reserved for Mobile Virtual Joystick -->
+    <div class="w-28 h-28 sm:w-36 sm:h-36 pointer-events-none"></div>
+
+    <!-- Center: Die Face Inspector Net + Last Roll Callout -->
+    <div class="flex flex-col items-center gap-1.5 pointer-events-auto">
+      <div id="roll-callout" class="px-4 py-1 rounded-full tabletop-panel text-xs sm:text-sm font-display font-bold tracking-wider text-amber-200 opacity-0 transition-all duration-200 transform translate-y-1">
+        ROLLED 6 — ARCANE NOVA!
+      </div>
+
+      <div class="tabletop-panel rounded-2xl p-2 sm:p-2.5 flex items-center gap-2 sm:gap-3">
+        <!-- 6 Die Faces Strip -->
+        <div id="die-faces-strip" class="grid grid-cols-6 gap-1.5 sm:gap-2">
+          <!-- Populated dynamically by JS -->
+        </div>
+
+        <div class="h-9 w-px bg-amber-700/40 hidden sm:block"></div>
+
+        <!-- Throw Ready Indicator / Desktop Hint -->
+        <button id="btn-hud-throw" class="brass-btn rounded-xl px-3 py-2 font-display font-bold text-xs sm:text-sm tracking-wider uppercase flex items-center gap-1.5">
+          <span>Cast</span>
+          <span class="hidden md:inline text-[10px] bg-black/20 px-1.5 py-0.5 rounded font-sans">CLICK / SPACE</span>
+        </button>
+      </div>
+
+      <!-- Crisp 1-Line Diegetic Combat Hint -->
+      <div class="px-3 py-0.5 rounded-full bg-black/65 border border-amber-700/45 text-[11px] sm:text-xs text-amber-200/90 font-medium tracking-wide text-center shadow">
+        Aim &amp; Throw: Crush enemies on bounce + Detonate AoE when the die lands!
+      </div>
+    </div>
+
+    <!-- Right Space reserved for Mobile Cast Button -->
+    <div class="w-24 h-24 sm:w-32 sm:h-32 pointer-events-none"></div>
+  </div>
+
+  <!-- Mobile / Touch Overlay Controls -->
+  <div id="touch-controls" class="fixed inset-0 pointer-events-none z-20 hidden">
+    <!-- Left Virtual Thumbstick Zone -->
+    <div id="joystick-zone" class="fixed bottom-4 left-4 w-32 h-32 sm:w-36 sm:h-36 rounded-full bg-amber-950/35 border-2 border-amber-400/35 backdrop-blur-xs pointer-events-auto flex items-center justify-center">
+      <div id="joystick-knob" class="w-12 h-12 rounded-full bg-gradient-to-br from-amber-300 to-amber-600 border-2 border-amber-100 shadow-lg transform transition-transform duration-75"></div>
+    </div>
+
+    <!-- Right Throw / Cast Die Action Button -->
+    <button id="touch-throw-btn" class="fixed bottom-6 right-5 w-20 h-20 sm:w-24 sm:h-24 rounded-full brass-btn pointer-events-auto flex flex-col items-center justify-center shadow-2xl border-4 border-amber-200">
+      <svg class="w-8 h-8 text-amber-950" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM7.5 18c-.83 0-1.5-.67-1.5-1.5S6.67 15 7.5 15s1.5.67 1.5 1.5S8.33 18 7.5 18zm0-9C6.67 9 6 8.33 6 7.5S6.67 6 7.5 6 9 6.67 9 7.5 8.33 9 7.5 9zm4.5 4.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4.5 4.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm0-9c-.83 0-1.5-.67-1.5-1.5S15.67 6 16.5 6s1.5.67 1.5 1.5S17.33 9 16.5 9z"/>
+      </svg>
+      <span class="font-display font-black text-[11px] tracking-wider uppercase mt-0.5">THROW</span>
+    </button>
+  </div>
+
+  <!-- START SCREEN OVERLAY -->
+  <div id="screen-start" class="fixed inset-0 z-30 flex items-center justify-center p-4 bg-gradient-to-b from-black/45 via-black/25 to-black/65">
+    <div class="tabletop-panel rounded-3xl max-w-lg w-full p-6 sm:p-8 text-center relative overflow-hidden">
+      <!-- Decorative Corner Rivets -->
+      <div class="w-3 h-3 rounded-full bg-amber-400/70 absolute top-3.5 left-3.5 shadow-inner"></div>
+      <div class="w-3 h-3 rounded-full bg-amber-400/70 absolute top-3.5 right-3.5 shadow-inner"></div>
+      <div class="w-3 h-3 rounded-full bg-amber-400/70 absolute bottom-3.5 left-3.5 shadow-inner"></div>
+      <div class="w-3 h-3 rounded-full bg-amber-400/70 absolute bottom-3.5 right-3.5 shadow-inner"></div>
+
+      <div class="inline-block px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-semibold tracking-widest uppercase mb-3">
+        Tabletop Tactics Roguelike
+      </div>
+
+      <h1 class="font-display font-black text-3xl sm:text-5xl text-transparent bg-clip-text bg-gradient-to-b from-amber-100 via-amber-300 to-amber-600 drop-shadow-md tracking-wide">
+        ARCANE DICE
+      </h1>
+      <div class="font-display font-bold text-sm sm:text-base tracking-[0.28em] text-amber-200/80 uppercase mt-1 mb-5">
+        Oak &amp; Ruin
+      </div>
+
+      <p class="text-amber-100/85 text-sm sm:text-base leading-relaxed mb-6">
+        Command your miniature Arcanist across a sunlit oak dungeon board. Hurl giant enchanted resin dice that tumble across stone tiles—unleashing blasts scaled by the face rolled, then engrave fallen runes onto your die!
+      </p>
+
+      <!-- Controls Quick Reference -->
+      <div class="grid grid-cols-2 gap-2.5 text-left mb-6 bg-black/35 rounded-2xl p-3.5 border border-amber-800/40 text-xs sm:text-sm">
+        <div class="flex items-center gap-2.5">
+          <span class="px-2 py-1 rounded bg-amber-900/70 border border-amber-600/50 text-amber-200 font-mono text-xs">WASD / Stick</span>
+          <span class="text-amber-100/80">Move Wizard</span>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <span class="px-2 py-1 rounded bg-amber-900/70 border border-amber-600/50 text-amber-200 font-mono text-xs">Click / Space</span>
+          <span class="text-amber-100/80">Throw Resin Die</span>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <span class="px-2 py-1 rounded bg-cyan-950/80 border border-cyan-600/50 text-cyan-200 font-mono text-xs">Collect Runes</span>
+          <span class="text-amber-100/80">Engrave Faces</span>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <span class="px-2 py-1 rounded bg-rose-950/80 border border-rose-600/50 text-rose-200 font-mono text-xs">1–6 Faces</span>
+          <span class="text-amber-100/80">Higher = Bigger AoE</span>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <button id="btn-start-play" class="brass-btn w-full sm:w-auto flex-1 py-3.5 px-8 rounded-2xl font-display font-black text-lg tracking-wider uppercase cursor-pointer">
+          Roll &amp; Enter Board
+        </button>
+        <button id="btn-start-scores" class="w-full sm:w-auto py-3.5 px-5 rounded-2xl bg-stone-900/85 hover:bg-stone-800 border-2 border-amber-700/60 text-amber-200 font-display font-bold text-sm tracking-wider uppercase transition cursor-pointer">
+          Hall of Fame
+        </button>
+      </div>
+
+      <!-- Collapsible High Scores Panel on Start Screen -->
+      <div id="start-highscores-panel" class="hidden mt-5 pt-4 border-t border-amber-700/40 text-left">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-display font-bold text-amber-300 text-sm uppercase tracking-wider">Top Tabletop Runs</span>
+          <span class="text-xs text-amber-200/60">Local Chronicle</span>
+        </div>
+        <div id="start-highscores-list" class="space-y-1.5 text-xs sm:text-sm"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RUNE ENGRAVING MODAL (Pick 1 of 3 Upgrades & Choose Die Face) -->
+  <div id="screen-upgrade" class="fixed inset-0 z-30 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs hidden">
+    <div class="tabletop-panel rounded-3xl max-w-3xl w-full p-5 sm:p-7 text-center">
+      <div class="inline-block px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 text-xs font-bold tracking-widest uppercase mb-2">
+        Arcane Forge Unlocked
+      </div>
+      <h2 class="font-display font-black text-2xl sm:text-3xl text-amber-100">
+        Engrave a Magic Rune
+      </h2>
+      <p class="text-amber-200/80 text-xs sm:text-sm mt-1 mb-4">
+        Select an elemental rune card, then choose which face (1–6) of your resin die to permanently enchant.
+      </p>
+
+      <!-- Step 1: 3 Rune Cards -->
+      <div id="upgrade-cards-container" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <!-- Populated dynamically -->
+      </div>
+
+      <!-- Step 2: Choose Target Die Face (1..6) -->
+      <div class="bg-black/40 rounded-2xl p-3.5 border border-amber-700/40">
+        <div class="text-xs uppercase tracking-wider text-amber-300 font-semibold mb-2.5">
+          Select Target Die Face to Engrave:
+        </div>
+        <div id="upgrade-face-selector" class="grid grid-cols-6 gap-2 max-w-md mx-auto">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <div class="mt-5 flex items-center justify-center gap-3">
+        <button id="btn-confirm-engrave" class="brass-btn py-3 px-8 rounded-2xl font-display font-black text-base tracking-wider uppercase cursor-pointer">
+          Engrave Selected Face
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAUSE OVERLAY -->
+  <div id="screen-pause" class="fixed inset-0 z-30 flex items-center justify-center p-4 bg-black/65 backdrop-blur-xs hidden">
+    <div class="tabletop-panel rounded-3xl max-w-sm w-full p-6 sm:p-7 text-center">
+      <h2 class="font-display font-black text-2xl sm:text-3xl text-amber-200 mb-2">Table Paused</h2>
+      <p class="text-amber-100/70 text-sm mb-6">Your miniatures await your next command.</p>
+
+      <div class="flex flex-col gap-3">
+        <button id="btn-resume" class="brass-btn py-3 px-6 rounded-2xl font-display font-bold text-base uppercase tracking-wider cursor-pointer">
+          Resume Game
+        </button>
+        <button id="btn-toggle-sound" class="py-3 px-6 rounded-2xl bg-stone-900/90 hover:bg-stone-800 border border-amber-700/60 text-amber-200 font-semibold text-sm uppercase tracking-wider transition cursor-pointer">
+          Sound FX: ON
+        </button>
+        <button id="btn-pause-restart" class="py-3 px-6 rounded-2xl bg-rose-950/80 hover:bg-rose-900 border border-rose-700/60 text-rose-200 font-semibold text-sm uppercase tracking-wider transition cursor-pointer">
+          Restart Run
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME OVER OVERLAY -->
+  <div id="screen-gameover" class="fixed inset-0 z-30 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs hidden">
+    <div class="tabletop-panel rounded-3xl max-w-md w-full p-6 sm:p-8 text-center">
+      <div class="inline-block px-3 py-1 rounded-full bg-rose-500/20 border border-rose-400/40 text-rose-300 text-xs font-bold tracking-widest uppercase mb-2">
+        Miniature Toppled
+      </div>
+      <h2 class="font-display font-black text-3xl sm:text-4xl text-amber-100 mb-1">Quest Fallen</h2>
+      <p id="gameover-subtitle" class="text-amber-200/75 text-sm mb-5">The dungeon claimed the oak board.</p>
+
+      <!-- Run Summary Stats -->
+      <div class="grid grid-cols-3 gap-2 bg-black/40 rounded-2xl p-3.5 border border-amber-700/40 mb-5">
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-amber-300/75">Final Score</div>
+          <div id="go-score" class="font-display font-black text-xl sm:text-2xl text-amber-200">0</div>
+        </div>
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-amber-300/75">Wave</div>
+          <div id="go-wave" class="font-display font-black text-xl sm:text-2xl text-amber-200">1</div>
+        </div>
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-amber-300/75">Runes Forged</div>
+          <div id="go-runes" class="font-display font-black text-xl sm:text-2xl text-cyan-300">0</div>
+        </div>
+      </div>
+
+      <!-- Persistent High Score Table -->
+      <div class="text-left mb-6">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-display font-bold text-amber-300 text-xs uppercase tracking-wider">Hall of Fame (Top 5)</span>
+          <span id="go-new-record" class="hidden text-xs font-bold text-emerald-400 animate-pulse">NEW RECORD!</span>
+        </div>
+        <div id="go-highscores-list" class="space-y-1.5 text-xs sm:text-sm bg-black/30 rounded-xl p-3 border border-amber-800/40">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <button id="btn-play-again" class="brass-btn w-full py-3.5 px-8 rounded-2xl font-display font-black text-lg tracking-wider uppercase cursor-pointer">
+        Play Again
+      </button>
+    </div>
+  </div>
+
+  <!-- Three.js from unpkg CDN -->
+  <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+
+  <script>
+    /**
+     * ARCANE DICE: OAK & RUIN
+     * A 3D tabletop RPG diorama roguelike built with Three.js, procedural PBR textures,
+     * custom 3D rigid-body cube physics with torque & face detection, and Web Audio foley.
+     */
+    (function () {
+      'use strict';
+
+      // =========================================================================
+      // 1. PROCEDURAL WEB AUDIO SYNTHESIZER (Tabletop Foley & Elemental Magic)
+      // =========================================================================
+      class SoundEngine {
+        constructor() {
+          this.ctx = null;
+          this.enabled = true;
+        }
+
+        init() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              this.ctx = new AudioCtx();
+            }
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+        }
+
+        toggle() {
+          this.enabled = !this.enabled;
+          return this.enabled;
+        }
+
+        // Crisp wooden/resin clack when the die bounces on oak or stone tiles
+        playDiceClack(intensity = 1.0) {
+          if (!this.enabled) return;
+          this.init();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const vol = Math.min(0.45, Math.max(0.04, intensity * 0.35));
+
+          // Short woody/resin resonant impulse
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          const baseFreq = 320 + Math.random() * 190;
+          osc.frequency.setValueAtTime(baseFreq, now);
+          osc.frequency.exponentialRampToValueAtTime(110, now + 0.045);
+
+          gain.gain.setValueAtTime(vol, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.055);
+
+          // High click transient for hard acrylic/resin edge
+          const clickOsc = this.ctx.createOscillator();
+          const clickGain = this.ctx.createGain();
+          clickOsc.type = 'sine';
+          clickOsc.frequency.setValueAtTime(1400 + Math.random() * 600, now);
+          clickOsc.frequency.exponentialRampToValueAtTime(420, now + 0.02);
+          clickGain.gain.setValueAtTime(vol * 0.6, now);
+          clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.022);
+          clickOsc.connect(clickGain);
+          clickGain.connect(this.ctx.destination);
+          clickOsc.start(now);
+          clickOsc.stop(now + 0.025);
+        }
+
+        // Whoosh when wizard flings the giant die
+        playThrowWhoosh() {
+          if (!this.enabled) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(180, now);
+          osc.frequency.exponentialRampToValueAtTime(460, now + 0.14);
+          gain.gain.setValueAtTime(0.14, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.17);
+        }
+
+        // Elemental resolution blast
+        playSpellBlast(type, rollVal) {
+          if (!this.enabled) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          const power = 0.7 + (rollVal / 6) * 0.5;
+
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          if (type === 'meteor') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(140 * power, now);
+            osc.frequency.exponentialRampToValueAtTime(34, now + 0.48);
+          } else if (type === 'frost') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(980, now);
+            osc.frequency.exponentialRampToValueAtTime(320, now + 0.35);
+          } else if (type === 'vampire') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(220, now);
+            osc.frequency.linearRampToValueAtTime(540, now + 0.28);
+          } else if (type === 'chain') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(660, now);
+            osc.frequency.exponentialRampToValueAtTime(130, now + 0.26);
+          } else {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(260 * power, now);
+            osc.frequency.exponentialRampToValueAtTime(65, now + 0.32);
+          }
+
+          gain.gain.setValueAtTime(0.24 * power, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.5);
+        }
+
+        // Chime when picking up a glowing rune
+        playRunePickup() {
+          if (!this.enabled) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          const notes = [523.25, 659.25, 783.99, 1046.5];
+          notes.forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.045);
+            gain.gain.setValueAtTime(0.14, now + idx * 0.045);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.045 + 0.22);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.045);
+            osc.stop(now + idx * 0.045 + 0.24);
+          });
+        }
+
+        // Player hurt thud
+        playHitSound() {
+          if (!this.enabled) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(120, now);
+          osc.frequency.exponentialRampToValueAtTime(42, now + 0.2);
+          gain.gain.setValueAtTime(0.22, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.23);
+        }
+      }
+
+      const sound = new SoundEngine();
+
+      // =========================================================================
+      // 2. RUNE ENCHANTMENT DEFINITIONS & PERSISTENT HIGH SCORES
+      // =========================================================================
+      const RUNE_TYPES = {
+        normal: {
+          id: 'normal',
+          name: 'Arcane Force',
+          short: 'Force',
+          color: '#38bdf8',
+          hex: 0x38bdf8,
+          badgeBg: 'bg-sky-950/90 border-sky-400/70 text-sky-200',
+          desc: 'Pure kinetic shockwave dealing AoE damage scaled by the die number.'
+        },
+        meteor: {
+          id: 'meteor',
+          name: 'Meteor Strike',
+          short: 'Meteor',
+          color: '#f97316',
+          hex: 0xf97316,
+          badgeBg: 'bg-orange-950/95 border-orange-400 text-orange-200',
+          desc: 'Calls down a blazing meteor: +85% massive fire AoE damage and wide blast radius.'
+        },
+        frost: {
+          id: 'frost',
+          name: 'Frost Blizzard',
+          short: 'Frost',
+          color: '#22d3ee',
+          hex: 0x22d3ee,
+          badgeBg: 'bg-cyan-950/95 border-cyan-300 text-cyan-100',
+          desc: 'Shatters ice across the tiles: +35% damage and freezes enemies solid for 3.2s.'
+        },
+        vampire: {
+          id: 'vampire',
+          name: 'Vampire Heal',
+          short: 'Vampire',
+          color: '#f43f5e',
+          hex: 0xf43f5e,
+          badgeBg: 'bg-rose-950/95 border-rose-400 text-rose-200',
+          desc: 'Crimson blood siphon: deals +30% damage and restores +6 HP per enemy struck.'
+        },
+        chain: {
+          id: 'chain',
+          name: 'Chain Explosion',
+          short: 'Chain',
+          color: '#facc15',
+          hex: 0xfacc15,
+          badgeBg: 'bg-yellow-950/95 border-yellow-300 text-yellow-100',
+          desc: 'Arcing lightning detonations bounce up to 4 times between nearby foes!'
+        },
+        multiplier: {
+          id: 'multiplier',
+          name: 'Arcane Overdrive',
+          short: '2.5x Nova',
+          color: '#c084fc',
+          hex: 0xc084fc,
+          badgeBg: 'bg-purple-950/95 border-purple-400 text-purple-200',
+          desc: 'Amplifies rolled die potency by 2.5x for devastating raw arcane obliteration.'
+        }
+      };
+
+      const UPGRADE_POOL = ['meteor', 'frost', 'vampire', 'chain', 'multiplier'];
+      const STORAGE_KEY = 'arcane_dice_oak_ruin_scores_v1';
+
+      function loadHighScores() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+          }
+        } catch (e) {}
+        return [
+          { score: 4200, wave: 5, runes: 4, date: 'Archmage' },
+          { score: 2650, wave: 4, runes: 3, date: 'Runesmith' },
+          { score: 1400, wave: 3, runes: 2, date: 'Apprentice' }
+        ];
+      }
+
+      function saveHighScore(score, wave, runes) {
+        const list = loadHighScores();
+        const today = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        list.push({ score, wave, runes, date: today, isNew: true });
+        list.sort((a, b) => b.score - a.score);
+        const top5 = list.slice(0, 5);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(top5.map(({ isNew, ...rest }) => rest)));
+        } catch (e) {}
+        return top5;
+      }
+
+      // =========================================================================
+      // 3. PROCEDURAL CANVAS TEXTURES (Oak Grain, Painted Stone, Die Faces)
+      // =========================================================================
+      function createOakWoodTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#5c3a21';
+        ctx.fillRect(0, 0, 512, 512);
+
+        // Wood plank bands & organic grain
+        for (let y = 0; y < 512; y += 2) {
+          const wave = Math.sin(y * 0.045) * 14 + Math.cos(y * 0.13) * 5;
+          const tone = 72 + Math.sin(y * 0.09 + wave * 0.1) * 18;
+          ctx.fillStyle = `rgb(${Math.floor(tone + 26)}, ${Math.floor(tone * 0.72)}, ${Math.floor(tone * 0.42)})`;
+          ctx.fillRect(0, y, 512, 2);
+        }
+
+        // Subtle plank seams
+        ctx.fillStyle = 'rgba(25, 13, 5, 0.45)';
+        [128, 256, 384].forEach(y => ctx.fillRect(0, y, 512, 3));
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        return tex;
+      }
+
+      function createStoneTileTexture(variant = 0) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+
+        // Base hand-painted miniature stone grey-slate
+        const baseR = variant === 1 ? 82 : 94;
+        const baseG = variant === 1 ? 88 : 96;
+        const baseB = variant === 1 ? 86 : 102;
+        ctx.fillStyle = `rgb(${baseR},${baseG},${baseB})`;
+        ctx.fillRect(0, 0, 256, 256);
+
+        // Mottled dry-brush stone speckles
+        for (let i = 0; i < 420; i++) {
+          const x = Math.random() * 256;
+          const y = Math.random() * 256;
+          const r = 2 + Math.random() * 9;
+          ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,250,240,0.06)' : 'rgba(20,24,28,0.09)';
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Beveled stone edge highlight & shadow
+        ctx.strokeStyle = 'rgba(235, 230, 215, 0.25)';
+        ctx.lineWidth = 6;
+        ctx.strokeRect(5, 5, 246, 246);
+
+        ctx.strokeStyle = 'rgba(22, 24, 28, 0.55)';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(2, 2, 252, 252);
+
+        // Mossy crack accent on select tiles
+        if (variant === 1) {
+          ctx.strokeStyle = '#3f6236';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(28, 220);
+          ctx.lineTo(74, 175);
+          ctx.lineTo(115, 185);
+          ctx.stroke();
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        return tex;
+      }
+
+      // Generates a crisp translucent resin die face texture with pips, numeral, and rune icon
+      function createDieFaceTexture(faceNumber, runeTypeId) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        const rune = RUNE_TYPES[runeTypeId] || RUNE_TYPES.normal;
+
+        // Deep cosmic resin background with subtle internal shimmer
+        const grad = ctx.createRadialGradient(128, 128, 16, 128, 128, 150);
+        if (runeTypeId === 'normal') {
+          grad.addColorStop(0, '#1e3a8a');
+          grad.addColorStop(0.65, '#172554');
+          grad.addColorStop(1, '#0f172a');
+        } else {
+          grad.addColorStop(0, rune.color);
+          grad.addColorStop(0.55, '#1e1b4b');
+          grad.addColorStop(1, '#090d16');
+        }
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 256, 256);
+
+        // Gold/Elemental engraved border frame
+        ctx.strokeStyle = runeTypeId === 'normal' ? '#fbbf24' : rune.color;
+        ctx.lineWidth = 12;
+        ctx.strokeRect(14, 14, 228, 228);
+
+        // Glitter inclusions inside resin
+        for (let i = 0; i < 45; i++) {
+          ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.45)' : rune.color;
+          ctx.beginPath();
+          ctx.arc(24 + Math.random() * 208, 24 + Math.random() * 208, 1.2 + Math.random() * 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Draw crisp pips for standard die readability
+        const pipCoords = {
+          1: [[128, 128]],
+          2: [[72, 72], [184, 184]],
+          3: [[68, 68], [128, 128], [188, 188]],
+          4: [[72, 72], [184, 72], [72, 184], [184, 184]],
+          5: [[70, 70], [186, 70], [128, 128], [70, 186], [186, 186]],
+          6: [[72, 64], [184, 64], [72, 128], [184, 128], [72, 192], [184, 192]]
+        };
+
+        const coords = pipCoords[faceNumber] || pipCoords[1];
+        coords.forEach(([px, py]) => {
+          ctx.fillStyle = 'rgba(0,0,0,0.55)';
+          ctx.beginPath();
+          ctx.arc(px + 2, py + 3, 18, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = runeTypeId === 'normal' ? '#fef3c7' : '#ffffff';
+          ctx.beginPath();
+          ctx.arc(px, py, 16, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = rune.color;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        });
+
+        // Corner numeral & Rune tag badge
+        ctx.fillStyle = '#fef08a';
+        ctx.font = 'bold 30px Cinzel, serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(String(faceNumber), 26, 48);
+
+        if (runeTypeId !== 'normal') {
+          ctx.fillStyle = 'rgba(0,0,0,0.72)';
+          ctx.fillRect(36, 106, 184, 44);
+          ctx.strokeStyle = rune.color;
+          ctx.lineWidth = 3;
+          ctx.strokeRect(36, 106, 184, 44);
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 22px Cinzel, serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(rune.short.toUpperCase(), 128, 136);
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.anisotropy = 4;
+        return tex;
+      }
+
+      // =========================================================================
+      // 4. THREE.JS SCENE, LIGHTING & SUNLIT TABLETOP DIORAMA SETUP
+      // =========================================================================
+      const canvas = document.getElementById('game-canvas');
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.12;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x23170e);
+      scene.fog = new THREE.FogExp2(0x23170e, 0.015);
+
+      const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 120);
+      const baseCameraOffset = new THREE.Vector3(0, 18.5, 16.5);
+      camera.position.copy(baseCameraOffset);
+      camera.lookAt(0, 0, 0.5);
+
+      // Warm Afternoon Window Sunlight + Cool Sky Fill + Wizard Staff Point Light
+      const ambientLight = new THREE.HemisphereLight(0xfff1d6, 0x3b2618, 0.78);
+      scene.add(ambientLight);
+
+      const sunLight = new THREE.DirectionalLight(0xffe6ba, 1.85);
+      sunLight.position.set(14, 24, 12);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 2048;
+      sunLight.shadow.mapSize.height = 2048;
+      sunLight.shadow.camera.near = 5;
+      sunLight.shadow.camera.far = 55;
+      const dShadow = 15;
+      sunLight.shadow.camera.left = -dShadow;
+      sunLight.shadow.camera.right = dShadow;
+      sunLight.shadow.camera.top = dShadow;
+      sunLight.shadow.camera.bottom = -dShadow;
+      sunLight.shadow.bias = -0.0005;
+      scene.add(sunLight);
+
+      const rimLight = new THREE.DirectionalLight(0x7dd3fc, 0.45);
+      rimLight.position.set(-16, 12, -14);
+      scene.add(rimLight);
+
+      // =========================================================================
+      // 5. BUILD CARVED OAK BOARD, PAINTED TILES, BRASS CORNERS & DUST MOTES
+      // =========================================================================
+      const BOARD_HALF = 8.4; // Playable inner dungeon radius (-8.4 to +8.4)
+      const boardGroup = new THREE.Group();
+      scene.add(boardGroup);
+
+      const oakTex = createOakWoodTexture();
+      const oakMat = new THREE.MeshStandardMaterial({
+        map: oakTex,
+        roughness: 0.42,
+        metalness: 0.08
+      });
+      const brassMat = new THREE.MeshStandardMaterial({
+        color: 0xd9a13b,
+        roughness: 0.28,
+        metalness: 0.85
+      });
+
+      // Outer Tabletop Surface
+      const tablePlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(90, 90),
+        new THREE.MeshStandardMaterial({ color: 0x2b1b10, roughness: 0.8 })
+      );
+      tablePlane.rotation.x = -Math.PI / 2;
+      tablePlane.position.y = -0.75;
+      tablePlane.receiveShadow = true;
+      boardGroup.add(tablePlane);
+
+      // Carved Oak Plinth Base
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(19.6, 0.8, 19.6), oakMat);
+      plinth.position.y = -0.38;
+      plinth.receiveShadow = true;
+      plinth.castShadow = true;
+      boardGroup.add(plinth);
+
+      // Raised Carved Oak Perimeter Rails (Die bounces cleanly off these walls!)
+      const wallThick = 1.05;
+      const wallHeight = 1.15;
+      const railSpan = BOARD_HALF * 2 + wallThick * 2;
+      const railConfigs = [
+        { w: railSpan, d: wallThick, x: 0, z: -(BOARD_HALF + wallThick / 2) },
+        { w: railSpan, d: wallThick, x: 0, z: (BOARD_HALF + wallThick / 2) },
+        { w: wallThick, d: BOARD_HALF * 2, x: -(BOARD_HALF + wallThick / 2), z: 0 },
+        { w: wallThick, d: BOARD_HALF * 2, x: (BOARD_HALF + wallThick / 2), z: 0 }
+      ];
+      railConfigs.forEach(cfg => {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(cfg.w, wallHeight, cfg.d), oakMat);
+        rail.position.set(cfg.x, wallHeight / 2 - 0.1, cfg.z);
+        rail.castShadow = true;
+        rail.receiveShadow = true;
+        boardGroup.add(rail);
+      });
+
+      // Brass Corner Fittings
+      const cornerPos = BOARD_HALF + wallThick / 2;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => {
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(1.22, wallHeight + 0.12, 1.22), brassMat);
+        cap.position.set(sx * cornerPos, wallHeight / 2 - 0.08, sz * cornerPos);
+        cap.castShadow = true;
+        cap.receiveShadow = true;
+        boardGroup.add(cap);
+
+        const stud = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), brassMat);
+        stud.position.set(sx * cornerPos, wallHeight + 0.04, sz * cornerPos);
+        boardGroup.add(stud);
+      });
+
+      // Miniature Painted Dungeon Flagstone Grid (8x8 tiles)
+      const tileMatA = new THREE.MeshStandardMaterial({ map: createStoneTileTexture(0), roughness: 0.72, metalness: 0.06 });
+      const tileMatB = new THREE.MeshStandardMaterial({ map: createStoneTileTexture(1), roughness: 0.75, metalness: 0.06 });
+      const gridCount = 8;
+      const tileSize = (BOARD_HALF * 2) / gridCount;
+      for (let gx = 0; gx < gridCount; gx++) {
+        for (let gz = 0; gz < gridCount; gz++) {
+          const isAlt = (gx + gz) % 2 === 0 || (gx * 7 + gz * 13) % 5 === 0;
+          const tile = new THREE.Mesh(
+            new THREE.BoxGeometry(tileSize - 0.05, 0.16, tileSize - 0.05),
+            isAlt ? tileMatA : tileMatB
+          );
+          tile.position.set(
+            -BOARD_HALF + tileSize * (gx + 0.5),
+            0.02 + ((gx + gz) % 2) * 0.012,
+            -BOARD_HALF + tileSize * (gz + 0.5)
+          );
+          tile.receiveShadow = true;
+          boardGroup.add(tile);
+        }
+      }
+
+      // Sunlit Floating Dust Motes
+      const dustCount = 90;
+      const dustGeo = new THREE.BufferGeometry();
+      const dustPos = new Float32Array(dustCount * 3);
+      for (let i = 0; i < dustCount; i++) {
+        dustPos[i * 3] = (Math.random() - 0.5) * 18;
+        dustPos[i * 3 + 1] = 0.5 + Math.random() * 8;
+        dustPos[i * 3 + 2] = (Math.random() - 0.5) * 18;
+      }
+      dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+      const dustMat = new THREE.PointsMaterial({
+        color: 0xffe8a3,
+        size: 0.11,
+        transparent: true,
+        opacity: 0.55
+      });
+      const dustMotes = new THREE.Points(dustGeo, dustMat);
+      scene.add(dustMotes);
+
+      // =========================================================================
+      // 6. MINIATURE FIGURES FACTORY (Wizard + Varied Painted Enemy Miniatures)
+      // =========================================================================
+      function createWizardMiniature() {
+        const group = new THREE.Group();
+
+        // Circular beveled miniature base
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.62, 0.72, 0.16, 24),
+          new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.3 })
+        );
+        base.position.y = 0.16;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+
+        const baseRim = new THREE.Mesh(
+          new THREE.TorusGeometry(0.66, 0.04, 8, 24),
+          brassMat
+        );
+        baseRim.rotation.x = Math.PI / 2;
+        baseRim.position.y = 0.18;
+        group.add(baseRim);
+
+        // Painted Royal Blue & Gold Wizard Robe
+        const robeMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.55 });
+        const robe = new THREE.Mesh(new THREE.ConeGeometry(0.46, 1.15, 18), robeMat);
+        robe.position.y = 0.78;
+        robe.castShadow = true;
+        group.add(robe);
+
+        // Wizard Head & Beard
+        const head = new THREE.Mesh(
+          new THREE.SphereGeometry(0.24, 16, 16),
+          new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.6 })
+        );
+        head.position.y = 1.42;
+        head.castShadow = true;
+        group.add(head);
+
+        const beard = new THREE.Mesh(
+          new THREE.ConeGeometry(0.18, 0.42, 12),
+          new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.7 })
+        );
+        beard.rotation.x = Math.PI;
+        beard.position.set(0, 1.24, 0.14);
+        group.add(beard);
+
+        // Iconic Pointed Wizard Hat
+        const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.46, 0.06, 20), robeMat);
+        hatBrim.position.y = 1.6;
+        hatBrim.castShadow = true;
+        group.add(hatBrim);
+
+        const hatCone = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.68, 16), robeMat);
+        hatCone.position.set(0, 1.92, -0.03);
+        hatCone.rotation.x = -0.12;
+        hatCone.castShadow = true;
+        group.add(hatCone);
+
+        // Gnarled Oak Staff + Glowing Arcane Crystal Orb
+        const staff = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.045, 0.055, 1.55, 10),
+          new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 })
+        );
+        staff.position.set(0.48, 0.95, 0.16);
+        staff.rotation.z = -0.12;
+        staff.castShadow = true;
+        group.add(staff);
+
+        const orbMat = new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          emissive: 0x0ea5e9,
+          emissiveIntensity: 1.4,
+          roughness: 0.15
+        });
+        const orb = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), orbMat);
+        orb.position.set(0.57, 1.75, 0.16);
+        group.add(orb);
+
+        const orbLight = new THREE.PointLight(0x38bdf8, 1.2, 6);
+        orbLight.position.copy(orb.position);
+        group.add(orbLight);
+
+        group.userData = { orb, orbLight };
+        return group;
+      }
+
+      // World-space Glowing Target Reticle + Dotted Aim Trajectory Arc
+      function createAimVisuals() {
+        const group = new THREE.Group();
+
+        // Outer pulsing target ring on the dungeon floor
+        const outerRing = new THREE.Mesh(
+          new THREE.RingGeometry(0.85, 1.08, 32),
+          new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+        );
+        outerRing.rotation.x = -Math.PI / 2;
+        outerRing.position.y = 0.14;
+        group.add(outerRing);
+
+        // Inner crosshair disc
+        const innerDisc = new THREE.Mesh(
+          new THREE.CircleGeometry(0.28, 20),
+          new THREE.MeshBasicMaterial({ color: 0xfef08a, side: THREE.DoubleSide, transparent: true, opacity: 0.55 })
+        );
+        innerDisc.rotation.x = -Math.PI / 2;
+        innerDisc.position.y = 0.145;
+        group.add(innerDisc);
+
+        scene.add(group);
+
+        // Dotted parabolic throw arc from wizard to target reticle
+        const arcDots = [];
+        const dotGeo = new THREE.SphereGeometry(0.11, 10, 10);
+        const dotMat = new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.85 });
+        for (let i = 0; i < 12; i++) {
+          const dot = new THREE.Mesh(dotGeo, dotMat);
+          scene.add(dot);
+          arcDots.push(dot);
+        }
+
+        return { reticle: group, outerRing, innerDisc, arcDots };
+      }
+
+      const aimVisuals = createAimVisuals();
+
+      function createEnemyMiniature(type) {
+        const group = new THREE.Group();
+        const specs = {
+          goblin: { radius: 0.52, bodyColor: 0x4d7c0f, accentColor: 0xa16207, height: 0.95, scale: 0.95 },
+          skeleton: { radius: 0.58, bodyColor: 0xe2e8f0, accentColor: 0x991b1b, height: 1.25, scale: 1.05 },
+          necromancer: { radius: 0.62, bodyColor: 0x581c87, accentColor: 0x10b981, height: 1.38, scale: 1.1 },
+          golem: { radius: 0.82, bodyColor: 0x1e293b, accentColor: 0xf97316, height: 1.65, scale: 1.35 }
+        };
+        const cfg = specs[type] || specs.goblin;
+
+        // Circular miniature base
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(cfg.radius, cfg.radius + 0.08, 0.15, 20),
+          new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.5 })
+        );
+        base.position.y = 0.15;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+
+        // Diegetic Base Health Ring
+        const hpRingGeo = new THREE.RingGeometry(cfg.radius + 0.08, cfg.radius + 0.2, 24);
+        const hpRingMat = new THREE.MeshBasicMaterial({
+          color: 0xef4444,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.88
+        });
+        const hpRing = new THREE.Mesh(hpRingGeo, hpRingMat);
+        hpRing.rotation.x = -Math.PI / 2;
+        hpRing.position.y = 0.13;
+        group.add(hpRing);
+
+        const bodyMat = new THREE.MeshStandardMaterial({ color: cfg.bodyColor, roughness: 0.55 });
+        const accentMat = new THREE.MeshStandardMaterial({
+          color: cfg.accentColor,
+          emissive: type === 'golem' || type === 'necromancer' ? cfg.accentColor : 0x000000,
+          emissiveIntensity: 0.5,
+          roughness: 0.4
+        });
+
+        if (type === 'golem') {
+          // Broad Obsidian Golem torso + glowing magma core
+          const torso = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.05, 0.75), bodyMat);
+          torso.position.y = 0.82;
+          torso.castShadow = true;
+          group.add(torso);
+
+          const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), accentMat);
+          core.position.set(0, 0.88, 0.35);
+          group.add(core);
+
+          const head = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.38, 0.45), bodyMat);
+          head.position.y = 1.5;
+          head.castShadow = true;
+          group.add(head);
+        } else if (type === 'skeleton') {
+          // Armored Skeleton Knight with shield & helm
+          const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.26, 0.82, 12), bodyMat);
+          torso.position.y = 0.65;
+          torso.castShadow = true;
+          group.add(torso);
+
+          const skull = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), bodyMat);
+          skull.position.y = 1.24;
+          skull.castShadow = true;
+          group.add(skull);
+
+          const shield = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.65, 0.48), accentMat);
+          shield.position.set(-0.36, 0.72, 0.14);
+          shield.castShadow = true;
+          group.add(shield);
+        } else if (type === 'necromancer') {
+          // Hooded Necromancer Acolyte
+          const cloak = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.22, 14), bodyMat);
+          cloak.position.y = 0.8;
+          cloak.castShadow = true;
+          group.add(cloak);
+
+          const orb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), accentMat);
+          orb.position.set(0.35, 1.25, 0.22);
+          group.add(orb);
+        } else {
+          // Goblin Raider with jagged ears & dagger
+          const body = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.76, 12), accentMat);
+          body.position.y = 0.56;
+          body.castShadow = true;
+          group.add(body);
+
+          const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 14), bodyMat);
+          head.position.y = 1.04;
+          head.castShadow = true;
+          group.add(head);
+
+          // Goblin Ears
+          [-1, 1].forEach(side => {
+            const ear = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.28, 6), bodyMat);
+            ear.position.set(side * 0.28, 1.06, 0);
+            ear.rotation.z = -side * 1.1;
+            group.add(ear);
+          });
+        }
+
+        group.userData = { hpRing, hpRingMat, baseRadius: cfg.radius };
+        return group;
+      }
+
+      // =========================================================================
+      // 7. GIANT TRANSLUCENT RESIN D6 DIE WITH RIGID-BODY CUBE PHYSICS
+      // =========================================================================
+      // Three.js BoxGeometry material order: [+X, -X, +Y, -Y, +Z, -Z]
+      // Standard opposite-sides-sum-to-7 die layout:
+      // +X = 3, -X = 4, +Y = 1, -Y = 6, +Z = 2, -Z = 5
+      const FACE_NORMALS = [
+        { face: 3, localNormal: new THREE.Vector3(1, 0, 0) },
+        { face: 4, localNormal: new THREE.Vector3(-1, 0, 0) },
+        { face: 1, localNormal: new THREE.Vector3(0, 1, 0) },
+        { face: 6, localNormal: new THREE.Vector3(0, -1, 0) },
+        { face: 2, localNormal: new THREE.Vector3(0, 0, 1) },
+        { face: 5, localNormal: new THREE.Vector3(0, 0, -1) }
+      ];
+
+      class ResinDieActor {
+        constructor() {
+          this.size = 1.28;
+          this.half = this.size / 2;
+          this.faces = {
+            1: 'normal',
+            2: 'normal',
+            3: 'normal',
+            4: 'normal',
+            5: 'normal',
+            6: 'normal'
+          };
+
+          this.materials = FACE_NORMALS.map(fn =>
+            new THREE.MeshPhysicalMaterial({
+              map: createDieFaceTexture(fn.face, this.faces[fn.face]),
+              roughness: 0.14,
+              metalness: 0.05,
+              clearcoat: 1.0,
+              clearcoatRoughness: 0.08,
+              reflectivity: 0.9
+            })
+          );
+
+          this.mesh = new THREE.Mesh(new THREE.BoxGeometry(this.size, this.size, this.size), this.materials);
+          this.mesh.castShadow = true;
+          this.mesh.receiveShadow = true;
+          scene.add(this.mesh);
+
+          // Inner glowing core light inside the giant die
+          this.glowLight = new THREE.PointLight(0x38bdf8, 1.5, 7);
+          this.mesh.add(this.glowLight);
+
+          // Live Projected AoE Detonation Preview Ring on the dungeon floor beneath the rolling die
+          this.aoeRingMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.45
+          });
+          this.aoePreviewRing = new THREE.Mesh(new THREE.RingGeometry(0.86, 1.0, 44), this.aoeRingMat);
+          this.aoePreviewRing.rotation.x = -Math.PI / 2;
+          this.aoePreviewRing.position.y = 0.15;
+          this.aoePreviewRing.visible = false;
+          scene.add(this.aoePreviewRing);
+
+          this.aoeFillMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.14
+          });
+          this.aoePreviewFill = new THREE.Mesh(new THREE.CircleGeometry(0.86, 44), this.aoeFillMat);
+          this.aoePreviewFill.rotation.x = -Math.PI / 2;
+          this.aoePreviewFill.position.y = 0.145;
+          this.aoePreviewFill.visible = false;
+          scene.add(this.aoePreviewFill);
+
+          // Physics state
+          this.state = 'held'; // 'held' | 'rolling' | 'settling'
+          this.pos = new THREE.Vector3(0, 1.5, 0);
+          this.vel = new THREE.Vector3();
+          this.angVel = new THREE.Vector3();
+          this.settleTimer = 0;
+          this.rollAge = 0;
+          this.targetSnapQuat = null;
+          this.snapProgress = 0;
+        }
+
+        updateFaceTexture(faceNum) {
+          const idx = FACE_NORMALS.findIndex(f => f.face === faceNum);
+          if (idx >= 0) {
+            const oldMap = this.materials[idx].map;
+            this.materials[idx].map = createDieFaceTexture(faceNum, this.faces[faceNum]);
+            this.materials[idx].needsUpdate = true;
+            if (oldMap) oldMap.dispose();
+          }
+        }
+
+        resetAllFaces() {
+          for (let f = 1; f <= 6; f++) {
+            this.faces[f] = 'normal';
+            this.updateFaceTexture(f);
+          }
+        }
+
+        throwFrom(originPos, targetPos) {
+          this.state = 'rolling';
+          this.rollAge = 0;
+          this.settleTimer = 0;
+          this.targetSnapQuat = null;
+          this.snapProgress = 0;
+
+          this.pos.copy(originPos).add(new THREE.Vector3(0, 1.45, 0));
+
+          // Aim directly toward the ground reticle so the first heavy slam lands right on target!
+          const toTarget = new THREE.Vector3(targetPos.x - originPos.x, 0, targetPos.z - originPos.z);
+          const dist = Math.min(11.5, Math.max(1.5, toTarget.length()));
+          if (toTarget.lengthSq() > 0.001) toTarget.normalize();
+          else toTarget.set(0, 0, -1);
+
+          // Flight time ~0.42s to reach the reticle cleanly
+          const flightTime = 0.42;
+          const horizSpeed = dist / flightTime;
+          this.vel.set(toTarget.x * horizSpeed, 6.2, toTarget.z * horizSpeed);
+
+          // Brisk multi-axis spin for tactile tabletop tumble
+          this.angVel.set(
+            (Math.random() - 0.5) * 24 + toTarget.z * 14,
+            (Math.random() - 0.5) * 20,
+            (Math.random() - 0.5) * 24 - toTarget.x * 14
+          );
+
+          this.mesh.visible = true;
+          this.mesh.position.copy(this.pos);
+          this.aoePreviewRing.visible = true;
+          this.aoePreviewFill.visible = true;
+          sound.playThrowWhoosh();
+        }
+
+        getPreviewRadius(faceNum) {
+          const runeId = this.faces[faceNum] || 'normal';
+          let r = 2.35 + faceNum * 0.44;
+          if (runeId === 'meteor') r *= 1.32;
+          else if (runeId === 'frost') r *= 1.38;
+          else if (runeId === 'multiplier') r *= 1.25;
+          return r;
+        }
+
+        getTopFace() {
+          let bestFace = 1;
+          let maxDot = -Infinity;
+          const up = new THREE.Vector3(0, 1, 0);
+          const worldNormal = new THREE.Vector3();
+
+          for (const fn of FACE_NORMALS) {
+            worldNormal.copy(fn.localNormal).applyQuaternion(this.mesh.quaternion);
+            const dot = worldNormal.dot(up);
+            if (dot > maxDot) {
+              maxDot = dot;
+              bestFace = fn.face;
+            }
+          }
+          return bestFace;
+        }
+
+        computeFlatQuaternion(faceNum) {
+          const entry = FACE_NORMALS.find(fn => fn.face === faceNum) || FACE_NORMALS[2];
+          const up = new THREE.Vector3(0, 1, 0);
+          const alignQuat = new THREE.Quaternion().setFromUnitVectors(entry.localNormal, up);
+          const currentYaw = new THREE.Euler().setFromQuaternion(this.mesh.quaternion, 'YXZ').y;
+          const yawQuat = new THREE.Quaternion().setFromAxisAngle(up, currentYaw);
+          return yawQuat.multiply(alignQuat).normalize();
+        }
+
+        update(dt, wizardPos, onBounceImpactCallback, onResolveCallback) {
+          if (this.state === 'held') {
+            // Orbiting miniature preview above wizard's staff
+            const t = performance.now() * 0.003;
+            this.mesh.visible = true;
+            this.aoePreviewRing.visible = false;
+            this.aoePreviewFill.visible = false;
+            this.mesh.scale.setScalar(0.42);
+            this.mesh.position.set(
+              wizardPos.x + Math.cos(t) * 0.55,
+              2.35 + Math.sin(t * 1.6) * 0.14,
+              wizardPos.z + Math.sin(t) * 0.55
+            );
+            this.mesh.rotation.x += dt * 1.4;
+            this.mesh.rotation.y += dt * 1.9;
+            return;
+          }
+
+          this.mesh.scale.setScalar(1.0);
+          this.rollAge += dt;
+
+          // Update live AoE detonation preview ring on the floor beneath the die
+          const currentTop = this.getTopFace();
+          const currentRune = RUNE_TYPES[this.faces[currentTop]] || RUNE_TYPES.normal;
+          const previewR = this.getPreviewRadius(currentTop);
+          const pulse = 1.0 + Math.sin(performance.now() * 0.018) * 0.04;
+          this.aoePreviewRing.visible = true;
+          this.aoePreviewFill.visible = true;
+          this.aoePreviewRing.position.set(this.pos.x, 0.15, this.pos.z);
+          this.aoePreviewFill.position.set(this.pos.x, 0.145, this.pos.z);
+          this.aoePreviewRing.scale.setScalar(previewR * pulse);
+          this.aoePreviewFill.scale.setScalar(previewR * pulse);
+          this.aoeRingMat.color.setHex(currentRune.hex);
+          this.aoeFillMat.color.setHex(currentRune.hex);
+          this.glowLight.color.setHex(currentRune.hex);
+
+          if (this.state === 'rolling') {
+            const gravity = -38.0;
+            this.vel.y += gravity * dt;
+
+            this.pos.addScaledVector(this.vel, dt);
+
+            // Apply angular velocity quaternion step
+            const angSpeed = this.angVel.length();
+            if (angSpeed > 0.0001) {
+              const axis = this.angVel.clone().divideScalar(angSpeed);
+              const dq = new THREE.Quaternion().setFromAxisAngle(axis, angSpeed * dt);
+              this.mesh.quaternion.premultiply(dq).normalize();
+            }
+
+            // Board Floor Collision (with heavy kinetic slam damage + crisp damping)
+            const floorY = 0.1 + this.half;
+            if (this.pos.y <= floorY) {
+              const impactVel = Math.abs(this.vel.y);
+              this.pos.y = floorY;
+
+              if (impactVel > 1.45) {
+                sound.playDiceClack(impactVel / 10);
+                // Stage 1 Heavy Kinetic Impact on floor slam!
+                if (onBounceImpactCallback) {
+                  onBounceImpactCallback(this.pos, impactVel);
+                }
+                // Brisk corner-edge tumble kick on bounce
+                this.angVel.x += (Math.random() - 0.5) * impactVel * 1.25;
+                this.angVel.z += (Math.random() - 0.5) * impactVel * 1.25;
+                this.angVel.multiplyScalar(0.62);
+              } else {
+                this.angVel.multiplyScalar(0.45);
+              }
+
+              // Tighter restitution & horizontal friction so die settles in ~0.95-1.15s
+              this.vel.y = impactVel * 0.36;
+              this.vel.x *= 0.62;
+              this.vel.z *= 0.62;
+            }
+
+            // Carved Oak Rail Wall Bounces
+            const limit = BOARD_HALF - this.half - 0.1;
+            if (this.pos.x < -limit) {
+              this.pos.x = -limit;
+              this.vel.x = Math.abs(this.vel.x) * 0.58;
+              this.angVel.z -= this.vel.x * 1.4;
+              sound.playDiceClack(0.5);
+            } else if (this.pos.x > limit) {
+              this.pos.x = limit;
+              this.vel.x = -Math.abs(this.vel.x) * 0.58;
+              this.angVel.z += this.vel.x * 1.4;
+              sound.playDiceClack(0.5);
+            }
+
+            if (this.pos.z < -limit) {
+              this.pos.z = -limit;
+              this.vel.z = Math.abs(this.vel.z) * 0.58;
+              this.angVel.x += this.vel.z * 1.4;
+              sound.playDiceClack(0.5);
+            } else if (this.pos.z > limit) {
+              this.pos.z = limit;
+              this.vel.z = -Math.abs(this.vel.z) * 0.58;
+              this.angVel.x -= this.vel.z * 1.4;
+              sound.playDiceClack(0.5);
+            }
+
+            this.mesh.position.copy(this.pos);
+
+            // Fast, decisive settle within ~0.9-1.2 seconds
+            const linearSpeed = this.vel.length();
+            if ((this.pos.y <= floorY + 0.05 && linearSpeed < 2.2 && angSpeed < 4.5) || this.rollAge > 1.05) {
+              this.settleTimer += dt;
+              if (this.settleTimer >= 0.09 || this.rollAge > 1.15) {
+                const topFace = this.getTopFace();
+                this.targetSnapQuat = this.computeFlatQuaternion(topFace);
+                this.snapProgress = 0;
+                this.state = 'settling';
+                this.pos.y = floorY;
+                this.mesh.position.copy(this.pos);
+                sound.playDiceClack(0.4);
+              }
+            } else {
+              this.settleTimer = 0;
+            }
+          } else if (this.state === 'settling') {
+            this.snapProgress = Math.min(1, this.snapProgress + dt * 13.0);
+            this.mesh.quaternion.slerp(this.targetSnapQuat, this.snapProgress);
+            if (this.snapProgress >= 1) {
+              const finalFace = this.getTopFace();
+              const runeId = this.faces[finalFace];
+              const impactPoint = this.pos.clone();
+              this.state = 'held';
+              this.aoePreviewRing.visible = false;
+              this.aoePreviewFill.visible = false;
+              onResolveCallback(finalFace, runeId, impactPoint);
+            }
+          }
+        }
+      }
+
+      // =========================================================================
+      // 8. GAME STATE, ENTITIES, PARTICLES & COMBAT LOGIC
+      // =========================================================================
+      const GAME = {
+        mode: 'START', // 'START' | 'PLAYING' | 'UPGRADE' | 'PAUSED' | 'GAMEOVER'
+        score: 0,
+        wave: 1,
+        combo: 1,
+        comboTimer: 0,
+        runesCollected: 0,
+        runesTowardUpgrade: 0,
+        runesNeeded: 3,
+        totalRunesForged: 0,
+
+        wizard: {
+          mesh: createWizardMiniature(),
+          pos: new THREE.Vector3(0, 0, 3.2),
+          aimDir: new THREE.Vector3(0, 0, -1),
+          aimPoint: new THREE.Vector3(0, 0.15, -0.5),
+          hasCustomPointerAim: false,
+          hp: 100,
+          maxHp: 100,
+          speed: 6.4,
+          invulnTimer: 0
+        },
+
+        die: new ResinDieActor(),
+        enemies: [],
+        runeDrops: [],
+        particles: [],
+        shockwaves: [],
+        props: [],
+
+        // Juice & Feedback
+        shakeTime: 0,
+        shakeIntensity: 0,
+        hitStopTimer: 0,
+        waveClearDelay: 0,
+
+        // Upgrade modal state
+        offeredRunes: [],
+        selectedRuneOption: null,
+        selectedTargetFace: 6
+      };
+
+      scene.add(GAME.wizard.mesh);
+
+      // Shared geometries for pooled particles & shockwaves
+      const particleGeo = new THREE.OctahedronGeometry(0.14, 0);
+      const shockwaveGeo = new THREE.RingGeometry(0.25, 0.55, 36);
+      const runeCrystalGeo = new THREE.OctahedronGeometry(0.32, 0);
+
+      function triggerScreenShake(intensity, duration = 0.28) {
+        GAME.shakeIntensity = Math.max(GAME.shakeIntensity, intensity);
+        GAME.shakeTime = Math.max(GAME.shakeTime, duration);
+      }
+
+      function spawnFloatingText(worldPos, text, color = '#fef08a', scale = 1.0) {
+        const layer = document.getElementById('floating-layer');
+        const vec = worldPos.clone();
+        vec.y += 1.4;
+        vec.project(camera);
+
+        if (vec.z > 1) return;
+        const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-(vec.y * 0.5) + 0.5) * window.innerHeight;
+
+        const el = document.createElement('div');
+        el.className = 'floating-dmg';
+        el.textContent = text;
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.color = color;
+        el.style.fontSize = `${Math.round(16 * scale)}px`;
+        layer.appendChild(el);
+        setTimeout(() => el.remove(), 950);
+      }
+
+      function spawnBurstParticles(origin, hexColor, count = 24, speedScale = 1.0) {
+        for (let i = 0; i < count; i++) {
+          const mat = new THREE.MeshBasicMaterial({ color: hexColor });
+          const mesh = new THREE.Mesh(particleGeo, mat);
+          mesh.position.copy(origin);
+          mesh.position.y += 0.35;
+
+          const angle = Math.random() * Math.PI * 2;
+          const speed = (2.2 + Math.random() * 5.8) * speedScale;
+          const vy = (2.5 + Math.random() * 5.5) * speedScale;
+
+          scene.add(mesh);
+          GAME.particles.push({
+            mesh,
+            vel: new THREE.Vector3(Math.cos(angle) * speed, vy, Math.sin(angle) * speed),
+            life: 0.45 + Math.random() * 0.35,
+            maxLife: 0.8
+          });
+        }
+      }
+
+      function spawnShockwaveRing(origin, maxRadius, hexColor) {
+        const mat = new THREE.MeshBasicMaterial({
+          color: hexColor,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.92
+        });
+        const ring = new THREE.Mesh(shockwaveGeo, mat);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(origin.x, 0.16, origin.z);
+        scene.add(ring);
+
+        GAME.shockwaves.push({
+          mesh: ring,
+          maxRadius,
+          life: 0.42,
+          maxLife: 0.42
+        });
+      }
+
+      function spawnDestructibleProps() {
+        GAME.props.forEach(p => scene.remove(p.mesh));
+        GAME.props = [];
+
+        const spots = [
+          [-4.8, -4.5], [4.8, -4.5], [-5.2, 4.2], [5.2, 4.2]
+        ];
+        spots.forEach(([px, pz]) => {
+          const barrel = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.42, 0.46, 0.85, 14),
+            new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.65 })
+          );
+          barrel.position.set(px, 0.52, pz);
+          barrel.castShadow = true;
+          barrel.receiveShadow = true;
+          scene.add(barrel);
+          GAME.props.push({ mesh: barrel, pos: new THREE.Vector3(px, 0, pz), radius: 0.55 });
+        });
+      }
+
+      function spawnRuneDrop(pos) {
+        const group = new THREE.Group();
+        const crystal = new THREE.Mesh(
+          runeCrystalGeo,
+          new THREE.MeshStandardMaterial({
+            color: 0x22d3ee,
+            emissive: 0x06b6d4,
+            emissiveIntensity: 1.5,
+            roughness: 0.15
+          })
+        );
+        crystal.position.y = 0.55;
+        group.add(crystal);
+
+        const halo = new THREE.Mesh(
+          new THREE.RingGeometry(0.32, 0.48, 20),
+          new THREE.MeshBasicMaterial({ color: 0x67e8f9, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+        );
+        halo.rotation.x = -Math.PI / 2;
+        halo.position.y = 0.14;
+        group.add(halo);
+
+        group.position.set(pos.x, 0, pos.z);
+        scene.add(group);
+
+        GAME.runeDrops.push({
+          mesh: group,
+          crystal,
+          pos: new THREE.Vector3(pos.x, 0, pos.z),
+          age: 0
+        });
+      }
+
+      function spawnWaveEnemies(waveNum) {
+        const count = Math.min(18, 3 + waveNum * 2);
+        for (let i = 0; i < count; i++) {
+          let type = 'goblin';
+          if (waveNum >= 2 && i % 3 === 1) type = 'skeleton';
+          if (waveNum >= 3 && i % 4 === 2) type = 'necromancer';
+          if (waveNum >= 3 && i === count - 1) type = 'golem';
+
+          const mesh = createEnemyMiniature(type);
+          // Spawn around outer edges away from wizard
+          let sx = 0;
+          let sz = 0;
+          for (let attempt = 0; attempt < 12; attempt++) {
+            const edge = Math.floor(Math.random() * 4);
+            const span = (Math.random() - 0.5) * (BOARD_HALF * 1.7);
+            if (edge === 0) { sx = span; sz = -BOARD_HALF + 0.9; }
+            else if (edge === 1) { sx = span; sz = BOARD_HALF - 0.9; }
+            else if (edge === 2) { sx = -BOARD_HALF + 0.9; sz = span; }
+            else { sx = BOARD_HALF - 0.9; sz = span; }
+
+            if (Math.hypot(sx - GAME.wizard.pos.x, sz - GAME.wizard.pos.z) > 4.2) break;
+          }
+
+          mesh.position.set(sx, 0, sz);
+          scene.add(mesh);
+
+          const baseHp = type === 'golem' ? 115 : type === 'skeleton' ? 58 : type === 'necromancer' ? 48 : 34;
+          const maxHp = Math.round(baseHp * (1 + (waveNum - 1) * 0.18));
+          const speed = type === 'golem' ? 1.55 : type === 'goblin' ? 2.85 : 2.15;
+
+          // Create crisp floating 3D-projected HTML health bar
+          const hpBarEl = document.createElement('div');
+          hpBarEl.className = 'enemy-hp-container';
+          const hpFillEl = document.createElement('div');
+          hpFillEl.className = 'enemy-hp-fill';
+          hpFillEl.style.width = '100%';
+          hpBarEl.appendChild(hpFillEl);
+          document.getElementById('enemy-bars-layer').appendChild(hpBarEl);
+
+          GAME.enemies.push({
+            type,
+            mesh,
+            hpBarEl,
+            hpFillEl,
+            pos: new THREE.Vector3(sx, 0, sz),
+            vel: new THREE.Vector3(),
+            hp: maxHp,
+            maxHp,
+            speed,
+            radius: mesh.userData.baseRadius,
+            freezeTimer: 0,
+            attackCooldown: 0.6,
+            toppleTimer: 0,
+            flashTimer: 0,
+            recoilScale: 1.0,
+            bounceHitCooldown: 0
+          });
+        }
+      }
+
+      // =========================================================================
+      // 9. TWO-STAGE DAMAGE SYSTEM (Stage 1: Kinetic Bounce + Stage 2: AoE Blast)
+      // =========================================================================
+
+      // STAGE 1: Heavy Kinetic Impact whenever the giant die slams the floor or collides mid-roll
+      function handleDieKineticImpact(diePos, impactVel = 8.0) {
+        const kineticRadius = 1.95;
+        const kineticDmg = Math.round(12 + Math.min(10, impactVel * 0.85));
+        let hitAny = false;
+
+        spawnShockwaveRing(diePos, kineticRadius, 0xfef08a);
+        spawnBurstParticles(diePos, 0xfde047, 10, 0.65);
+
+        GAME.enemies.forEach(enemy => {
+          if (enemy.toppleTimer > 0 || enemy.bounceHitCooldown > 0) return;
+          const dist = Math.hypot(enemy.pos.x - diePos.x, enemy.pos.z - diePos.z);
+          if (dist <= kineticRadius + enemy.radius) {
+            hitAny = true;
+            enemy.bounceHitCooldown = 0.22;
+            damageEnemy(enemy, kineticDmg, diePos, '#fef08a');
+          }
+        });
+
+        if (hitAny) {
+          triggerScreenShake(0.28, 0.16);
+          GAME.hitStopTimer = 0.022;
+          updateHUD();
+        }
+      }
+
+      // STAGE 2: Fast Arcane Detonation when the die settles on its top face
+      function resolveDieBlast(faceNumber, runeId, impactPos) {
+        const rune = RUNE_TYPES[runeId] || RUNE_TYPES.normal;
+        sound.playSpellBlast(runeId, faceNumber);
+
+        // Radius and damage scale dramatically with the rolled face (1 to 6)!
+        let radius = GAME.die.getPreviewRadius(faceNumber);
+        let baseDamage = 22 + faceNumber * 13;
+
+        if (runeId === 'meteor') {
+          baseDamage *= 1.85;
+          triggerScreenShake(0.65, 0.42);
+        } else if (runeId === 'frost') {
+          baseDamage *= 1.35;
+          triggerScreenShake(0.35, 0.25);
+        } else if (runeId === 'vampire') {
+          baseDamage *= 1.3;
+          triggerScreenShake(0.32, 0.24);
+        } else if (runeId === 'multiplier') {
+          baseDamage *= 2.5;
+          triggerScreenShake(0.58, 0.36);
+        } else {
+          triggerScreenShake(0.28 + faceNumber * 0.05, 0.24);
+        }
+
+        // Visual Shockwave & Particles
+        spawnShockwaveRing(impactPos, radius, rune.hex);
+        spawnBurstParticles(impactPos, rune.hex, 26 + faceNumber * 5, 0.85 + faceNumber * 0.1);
+        showRollBanner(faceNumber, rune);
+
+        // Destroy any barrels inside blast radius for bonus score & explosion
+        for (let i = GAME.props.length - 1; i >= 0; i--) {
+          const prop = GAME.props[i];
+          if (prop.pos.distanceTo(impactPos) <= radius) {
+            spawnBurstParticles(prop.pos, 0xd97706, 14, 0.9);
+            spawnFloatingText(prop.pos, '+150', '#fbbf24', 0.95);
+            GAME.score += 150;
+            scene.remove(prop.mesh);
+            GAME.props.splice(i, 1);
+          }
+        }
+
+        let enemiesHitCount = 0;
+        let firstHitEnemy = null;
+
+        GAME.enemies.forEach(enemy => {
+          if (enemy.toppleTimer > 0) return;
+          const dist = Math.hypot(enemy.pos.x - impactPos.x, enemy.pos.z - impactPos.z);
+          if (dist <= radius + enemy.radius) {
+            enemiesHitCount++;
+            if (!firstHitEnemy) firstHitEnemy = enemy;
+
+            const dmg = Math.round(baseDamage);
+            damageEnemy(enemy, dmg, impactPos, rune.color);
+
+            if (runeId === 'frost') {
+              enemy.freezeTimer = 3.2;
+              spawnFloatingText(enemy.pos, 'FROZEN!', '#67e8f9', 0.95);
+            }
+          }
+        });
+
+        // Vampire Heal: Restore HP per enemy hit
+        if (runeId === 'vampire' && enemiesHitCount > 0) {
+          const healAmt = enemiesHitCount * (5 + faceNumber);
+          GAME.wizard.hp = Math.min(GAME.wizard.maxHp, GAME.wizard.hp + healAmt);
+          spawnFloatingText(GAME.wizard.pos, `+${healAmt} HP`, '#fb7185', 1.15);
+          spawnBurstParticles(GAME.wizard.pos, 0xf43f5e, 14, 0.7);
+        }
+
+        // Chain Explosion: Arcing lightning bounces across nearby enemies
+        if (runeId === 'chain' && firstHitEnemy) {
+          let currentSource = firstHitEnemy;
+          const visited = new Set([firstHitEnemy]);
+          const maxBounces = 2 + Math.floor(faceNumber / 2);
+
+          for (let b = 0; b < maxBounces; b++) {
+            let nearest = null;
+            let bestD = 5.2;
+            for (const candidate of GAME.enemies) {
+              if (visited.has(candidate) || candidate.toppleTimer > 0) continue;
+              const d = currentSource.pos.distanceTo(candidate.pos);
+              if (d < bestD) {
+                bestD = d;
+                nearest = candidate;
+              }
+            }
+            if (!nearest) break;
+            visited.add(nearest);
+            spawnShockwaveRing(nearest.pos, 1.4, 0xfacc15);
+            spawnBurstParticles(nearest.pos, 0xfacc15, 12, 0.85);
+            damageEnemy(nearest, Math.round(baseDamage * 0.8), currentSource.pos, '#fde047');
+            currentSource = nearest;
+          }
+        }
+
+        if (enemiesHitCount > 0) {
+          GAME.hitStopTimer = 0.038; // Crisp tactile hit-stop frame
+        }
+
+        updateHUD();
+      }
+
+      function setEnemyWhiteFlash(enemy, active) {
+        enemy.mesh.traverse(child => {
+          if (child.isMesh && child.material && child.material.emissive) {
+            if (active) {
+              if (child.userData.origEmissive === undefined) {
+                child.userData.origEmissive = child.material.emissive.getHex();
+                child.userData.origEmissiveInt = child.material.emissiveIntensity;
+              }
+              child.material.emissive.setHex(0xffffff);
+              child.material.emissiveIntensity = 1.6;
+            } else if (child.userData.origEmissive !== undefined) {
+              child.material.emissive.setHex(child.userData.origEmissive);
+              child.material.emissiveIntensity = child.userData.origEmissiveInt;
+            }
+          }
+        });
+      }
+
+      function damageEnemy(enemy, amount, sourcePos, colorHexStr) {
+        enemy.hp -= amount;
+        enemy.flashTimer = 0.13;
+        enemy.recoilScale = 1.24;
+        setEnemyWhiteFlash(enemy, true);
+        spawnFloatingText(enemy.pos, `-${amount}`, colorHexStr, amount >= 50 ? 1.32 : 1.08);
+
+        // Knockback impulse away from blast center
+        const push = enemy.pos.clone().sub(sourcePos);
+        push.y = 0;
+        if (push.lengthSq() < 0.001) push.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+        push.normalize();
+        enemy.vel.addScaledVector(push, 7.8);
+
+        // Update diegetic base HP ring & floating HP bar
+        const ratio = Math.max(0, enemy.hp / enemy.maxHp);
+        enemy.mesh.userData.hpRing.scale.setScalar(0.35 + ratio * 0.65);
+        if (enemy.hpFillEl) {
+          enemy.hpFillEl.style.width = `${Math.round(ratio * 100)}%`;
+        }
+
+        if (enemy.hp <= 0 && enemy.toppleTimer <= 0) {
+          enemy.toppleTimer = 0.42;
+          if (enemy.hpBarEl) enemy.hpBarEl.style.opacity = '0';
+          GAME.combo = Math.min(8, GAME.combo + 1);
+          GAME.comboTimer = 4.2;
+          const pts = (enemy.type === 'golem' ? 400 : 120) * GAME.combo;
+          GAME.score += pts;
+
+          // Drop glowing magic rune crystal!
+          if (Math.random() < 0.72 || enemy.type === 'golem') {
+            spawnRuneDrop(enemy.pos);
+          }
+        }
+      }
+
+      // =========================================================================
+      // 10. UI, HUD, DIE FACE INSPECTOR & RUNE ENGRAVING MODAL
+      // =========================================================================
+      const hudTop = document.getElementById('hud-top');
+      const hudBottom = document.getElementById('hud-bottom');
+      const touchControls = document.getElementById('touch-controls');
+      const dieFacesStrip = document.getElementById('die-faces-strip');
+      let lastRolledFace = null;
+
+      function renderDieFacesStrip() {
+        dieFacesStrip.innerHTML = '';
+        for (let f = 1; f <= 6; f++) {
+          const runeId = GAME.die.faces[f];
+          const rune = RUNE_TYPES[runeId] || RUNE_TYPES.normal;
+          const cell = document.createElement('div');
+          cell.id = `die-cell-${f}`;
+          cell.className = `die-net-cell w-10 h-11 sm:w-12 sm:h-13 rounded-xl border-2 flex flex-col items-center justify-center p-1 ${rune.badgeBg} ${lastRolledFace === f ? 'active-roll' : ''}`;
+          cell.innerHTML = `
+            <span class="font-display font-black text-xs sm:text-sm leading-none">${f}</span>
+            <span class="text-[9px] sm:text-[10px] font-semibold truncate max-w-full mt-0.5 opacity-90">${rune.short}</span>
+          `;
+          dieFacesStrip.appendChild(cell);
+        }
+      }
+
+      function showRollBanner(faceNum, rune) {
+        lastRolledFace = faceNum;
+        renderDieFacesStrip();
+        const banner = document.getElementById('roll-callout');
+        banner.textContent = `ROLLED ${faceNum} — ${rune.name.toUpperCase()}!`;
+        banner.style.borderColor = rune.color;
+        banner.style.color = rune.color;
+        banner.classList.remove('opacity-0', 'translate-y-1');
+        banner.classList.add('opacity-100', 'translate-y-0');
+
+        clearTimeout(banner._hideTimer);
+        banner._hideTimer = setTimeout(() => {
+          banner.classList.add('opacity-0', 'translate-y-1');
+          banner.classList.remove('opacity-100', 'translate-y-0');
+        }, 1900);
+      }
+
+      function updateHUD() {
+        const hpPct = Math.max(0, Math.min(100, (GAME.wizard.hp / GAME.wizard.maxHp) * 100));
+        document.getElementById('hud-hp-bar').style.width = `${hpPct}%`;
+        document.getElementById('hud-hp-text').textContent = `${Math.ceil(GAME.wizard.hp)}/${GAME.wizard.maxHp}`;
+
+        const runePct = Math.min(100, (GAME.runesTowardUpgrade / GAME.runesNeeded) * 100);
+        document.getElementById('hud-rune-bar').style.width = `${runePct}%`;
+        document.getElementById('hud-rune-count').textContent = `${GAME.runesTowardUpgrade} / ${GAME.runesNeeded}`;
+
+        document.getElementById('hud-wave').textContent = String(GAME.wave);
+        document.getElementById('hud-score').textContent = GAME.score.toLocaleString();
+
+        const comboPill = document.getElementById('hud-combo-pill');
+        if (GAME.combo > 1) {
+          comboPill.classList.remove('opacity-0');
+          document.getElementById('hud-combo-text').textContent = `${GAME.combo}x`;
+        } else {
+          comboPill.classList.add('opacity-0');
+        }
+      }
+
+      function renderHighScoreList(containerId, scores) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        el.innerHTML = scores.map((entry, idx) => `
+          <div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg ${entry.isNew ? 'bg-amber-500/25 border border-amber-400/60' : 'bg-black/25'}">
+            <div class="flex items-center gap-2">
+              <span class="font-display font-bold text-amber-400 w-4">#${idx + 1}</span>
+              <span class="font-display font-bold text-amber-100">${entry.score.toLocaleString()}</span>
+            </div>
+            <div class="text-xs text-amber-200/75">
+              Wave ${entry.wave} · ${entry.runes} Runes
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Open Rune Engraving Upgrade Screen
+      function openUpgradeModal() {
+        GAME.mode = 'UPGRADE';
+        // Pick 3 distinct random rune upgrades
+        const shuffled = [...UPGRADE_POOL].sort(() => Math.random() - 0.5);
+        GAME.offeredRunes = shuffled.slice(0, 3);
+        GAME.selectedRuneOption = GAME.offeredRunes[0];
+
+        // Default target face: prefer highest un-upgraded face, else face 6
+        let bestFace = 6;
+        for (let f = 6; f >= 1; f--) {
+          if (GAME.die.faces[f] === 'normal') {
+            bestFace = f;
+            break;
+          }
+        }
+        GAME.selectedTargetFace = bestFace;
+        renderUpgradeModal();
+        document.getElementById('screen-upgrade').classList.remove('hidden');
+      }
+
+      function renderUpgradeModal() {
+        const cardsEl = document.getElementById('upgrade-cards-container');
+        cardsEl.innerHTML = '';
+
+        GAME.offeredRunes.forEach(runeId => {
+          const rune = RUNE_TYPES[runeId];
+          const isSelected = GAME.selectedRuneOption === runeId;
+          const card = document.createElement('button');
+          card.type = 'button';
+          card.className = `parchment-card rounded-2xl p-4 text-left transition transform cursor-pointer ${
+            isSelected ? 'ring-4 ring-amber-400 scale-[1.03]' : 'opacity-85 hover:opacity-100'
+          }`;
+          card.innerHTML = `
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-display font-black text-base sm:text-lg text-stone-900">${rune.name}</span>
+              <span class="w-3.5 h-3.5 rounded-full border border-black/30" style="background:${rune.color}"></span>
+            </div>
+            <p class="text-xs sm:text-sm text-stone-800 leading-snug">${rune.desc}</p>
+          `;
+          card.addEventListener('click', () => {
+            GAME.selectedRuneOption = runeId;
+            renderUpgradeModal();
+          });
+          cardsEl.appendChild(card);
+        });
+
+        const faceSelEl = document.getElementById('upgrade-face-selector');
+        faceSelEl.innerHTML = '';
+        for (let f = 1; f <= 6; f++) {
+          const currentRune = RUNE_TYPES[GAME.die.faces[f]];
+          const isTarget = GAME.selectedTargetFace === f;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `rounded-xl py-2 px-1 border-2 flex flex-col items-center justify-center transition cursor-pointer ${
+            isTarget
+              ? 'border-amber-300 bg-amber-500/30 scale-105 shadow-lg'
+              : 'border-amber-800/50 bg-stone-900/75 hover:border-amber-500'
+          }`;
+          btn.innerHTML = `
+            <span class="font-display font-black text-base text-amber-100">${f}</span>
+            <span class="text-[10px] font-semibold truncate max-w-full" style="color:${currentRune.color}">${currentRune.short}</span>
+          `;
+          btn.addEventListener('click', () => {
+            GAME.selectedTargetFace = f;
+            renderUpgradeModal();
+          });
+          faceSelEl.appendChild(btn);
+        }
+      }
+
+      // =========================================================================
+      // 11. INPUT HANDLING (Keyboard, Mouse Aim/Click & Touch Virtual Joystick)
+      // =========================================================================
+      const keys = {};
+      const raycaster = new THREE.Raycaster();
+      const pointerNDC = new THREE.Vector2();
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.15);
+      const joystickVec = new THREE.Vector2(0, 0);
+
+      window.addEventListener('keydown', e => {
+        keys[e.code] = true;
+        if (e.code === 'Space') {
+          if (GAME.mode === 'PLAYING') {
+            e.preventDefault();
+            attemptThrowDie();
+          }
+        } else if (e.code === 'Escape' || e.code === 'KeyP') {
+          if (GAME.mode === 'PLAYING') setPause(true);
+          else if (GAME.mode === 'PAUSED') setPause(false);
+        }
+      });
+
+      window.addEventListener('keyup', e => {
+        keys[e.code] = false;
+      });
+
+      function updateAimFromPointer(clientX, clientY) {
+        if (GAME.mode !== 'PLAYING') return;
+        pointerNDC.x = (clientX / window.innerWidth) * 2 - 1;
+        pointerNDC.y = -(clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(pointerNDC, camera);
+        const hitPoint = new THREE.Vector3();
+        if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
+          const clampLim = BOARD_HALF - 0.8;
+          hitPoint.x = Math.max(-clampLim, Math.min(clampLim, hitPoint.x));
+          hitPoint.z = Math.max(-clampLim, Math.min(clampLim, hitPoint.z));
+          hitPoint.y = 0.15;
+          GAME.wizard.aimPoint.copy(hitPoint);
+          GAME.wizard.hasCustomPointerAim = true;
+
+          const dir = hitPoint.clone().sub(GAME.wizard.pos);
+          dir.y = 0;
+          if (dir.lengthSq() > 0.04) {
+            GAME.wizard.aimDir.copy(dir.normalize());
+          }
+        }
+      }
+
+      canvas.addEventListener('pointermove', e => {
+        if (e.pointerType === 'mouse') {
+          updateAimFromPointer(e.clientX, e.clientY);
+        }
+      });
+
+      canvas.addEventListener('pointerdown', e => {
+        if (GAME.mode !== 'PLAYING') return;
+        if (e.pointerType === 'mouse' && e.button === 0) {
+          updateAimFromPointer(e.clientX, e.clientY);
+          attemptThrowDie();
+        }
+      });
+
+      // Touch Virtual Joystick & Cast Button
+      const joystickZone = document.getElementById('joystick-zone');
+      const joystickKnob = document.getElementById('joystick-knob');
+      let joyTouchId = null;
+
+      function handleJoystickMove(clientX, clientY) {
+        const rect = joystickZone.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const maxR = rect.width * 0.36;
+        let dx = clientX - cx;
+        let dy = clientY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > maxR) {
+          dx = (dx / dist) * maxR;
+          dy = (dy / dist) * maxR;
+        }
+        joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+        joystickVec.set(dx / maxR, dy / maxR);
+        if (joystickVec.lengthSq() > 0.04) {
+          GAME.wizard.aimDir.set(joystickVec.x, 0, joystickVec.y).normalize();
+        }
+      }
+
+      joystickZone.addEventListener('touchstart', e => {
+        e.preventDefault();
+        const t = e.changedTouches[0];
+        joyTouchId = t.identifier;
+        handleJoystickMove(t.clientX, t.clientY);
+      }, { passive: false });
+
+      joystickZone.addEventListener('touchmove', e => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          if (t.identifier === joyTouchId) {
+            handleJoystickMove(t.clientX, t.clientY);
+          }
+        }
+      }, { passive: false });
+
+      function resetJoystick() {
+        joyTouchId = null;
+        joystickVec.set(0, 0);
+        joystickKnob.style.transform = 'translate(0px, 0px)';
+      }
+      joystickZone.addEventListener('touchend', resetJoystick);
+      joystickZone.addEventListener('touchcancel', resetJoystick);
+
+      document.getElementById('touch-throw-btn').addEventListener('touchstart', e => {
+        e.preventDefault();
+        autoAimNearestEnemy();
+        attemptThrowDie();
+      }, { passive: false });
+
+      document.getElementById('btn-hud-throw').addEventListener('click', () => {
+        if (GAME.mode === 'PLAYING') {
+          autoAimNearestEnemy();
+          attemptThrowDie();
+        }
+      });
+
+      function autoAimNearestEnemy() {
+        let nearest = null;
+        let minD = Infinity;
+        for (const en of GAME.enemies) {
+          if (en.toppleTimer > 0) continue;
+          const d = en.pos.distanceTo(GAME.wizard.pos);
+          if (d < minD) {
+            minD = d;
+            nearest = en;
+          }
+        }
+        if (nearest) {
+          GAME.wizard.aimPoint.set(nearest.pos.x, 0.15, nearest.pos.z);
+          const dir = nearest.pos.clone().sub(GAME.wizard.pos);
+          dir.y = 0;
+          if (dir.lengthSq() > 0.01) GAME.wizard.aimDir.copy(dir.normalize());
+        } else {
+          GAME.wizard.aimPoint.set(
+            GAME.wizard.pos.x + GAME.wizard.aimDir.x * 4.2,
+            0.15,
+            GAME.wizard.pos.z + GAME.wizard.aimDir.z * 4.2
+          );
+        }
+      }
+
+      function attemptThrowDie() {
+        if (GAME.mode !== 'PLAYING') return;
+        if (GAME.die.state !== 'held') return;
+        if (!GAME.wizard.hasCustomPointerAim) {
+          autoAimNearestEnemy();
+        }
+        GAME.die.throwFrom(GAME.wizard.pos, GAME.wizard.aimPoint);
+      }
+
+      // =========================================================================
+      // 12. STATE TRANSITIONS (Start, Pause, Restart, Game Over)
+      // =========================================================================
+      function startNewRun() {
+        sound.init();
+        GAME.mode = 'PLAYING';
+        GAME.score = 0;
+        GAME.wave = 1;
+        GAME.combo = 1;
+        GAME.comboTimer = 0;
+        GAME.runesCollected = 0;
+        GAME.runesTowardUpgrade = 0;
+        GAME.runesNeeded = 3;
+        GAME.totalRunesForged = 0;
+
+        GAME.wizard.hp = 100;
+        GAME.wizard.maxHp = 100;
+        GAME.wizard.pos.set(0, 0, 3.2);
+        GAME.wizard.aimDir.set(0, 0, -1);
+        GAME.wizard.aimPoint.set(0, 0.15, -0.5);
+        GAME.wizard.hasCustomPointerAim = false;
+        GAME.wizard.invulnTimer = 0;
+
+        GAME.die.resetAllFaces();
+        GAME.die.state = 'held';
+        GAME.die.aoePreviewRing.visible = false;
+        GAME.die.aoePreviewFill.visible = false;
+        lastRolledFace = null;
+
+        // Clear existing enemies, health bars, drops, particles
+        GAME.enemies.forEach(e => {
+          scene.remove(e.mesh);
+          if (e.hpBarEl) e.hpBarEl.remove();
+        });
+        GAME.enemies = [];
+        document.getElementById('enemy-bars-layer').innerHTML = '';
+        GAME.runeDrops.forEach(r => scene.remove(r.mesh));
+        GAME.runeDrops = [];
+        GAME.particles.forEach(p => scene.remove(p.mesh));
+        GAME.particles = [];
+        GAME.shockwaves.forEach(s => scene.remove(s.mesh));
+        GAME.shockwaves = [];
+
+        spawnDestructibleProps();
+        spawnWaveEnemies(1);
+
+        document.getElementById('screen-start').classList.add('hidden');
+        document.getElementById('screen-pause').classList.add('hidden');
+        document.getElementById('screen-gameover').classList.add('hidden');
+        document.getElementById('screen-upgrade').classList.add('hidden');
+        hudTop.classList.remove('hidden');
+        hudBottom.classList.remove('hidden');
+
+        // Show touch controls on touch-capable devices or narrow viewports
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0 || window.innerWidth < 820) {
+          touchControls.classList.remove('hidden');
+        }
+
+        renderDieFacesStrip();
+        updateHUD();
+      }
+
+      function setPause(paused) {
+        if (paused && GAME.mode === 'PLAYING') {
+          GAME.mode = 'PAUSED';
+          document.getElementById('screen-pause').classList.remove('hidden');
+        } else if (!paused && GAME.mode === 'PAUSED') {
+          GAME.mode = 'PLAYING';
+          document.getElementById('screen-pause').classList.add('hidden');
+        }
+      }
+
+      function triggerGameOver() {
+        GAME.mode = 'GAMEOVER';
+        hudTop.classList.add('hidden');
+        hudBottom.classList.add('hidden');
+        touchControls.classList.add('hidden');
+
+        const updatedScores = saveHighScore(GAME.score, GAME.wave, GAME.totalRunesForged);
+        const isRecord = updatedScores.length > 0 && updatedScores[0].isNew;
+
+        document.getElementById('go-score').textContent = GAME.score.toLocaleString();
+        document.getElementById('go-wave').textContent = String(GAME.wave);
+        document.getElementById('go-runes').textContent = String(GAME.totalRunesForged);
+
+        const recBadge = document.getElementById('go-new-record');
+        if (isRecord) recBadge.classList.remove('hidden');
+        else recBadge.classList.add('hidden');
+
+        renderHighScoreList('go-highscores-list', updatedScores);
+        document.getElementById('screen-gameover').classList.remove('hidden');
+      }
+
+      // Wire up UI Buttons
+      document.getElementById('btn-start-play').addEventListener('click', startNewRun);
+      document.getElementById('btn-play-again').addEventListener('click', startNewRun);
+      document.getElementById('btn-pause-restart').addEventListener('click', startNewRun);
+      document.getElementById('btn-pause').addEventListener('click', () => setPause(true));
+      document.getElementById('btn-resume').addEventListener('click', () => setPause(false));
+
+      document.getElementById('btn-start-scores').addEventListener('click', () => {
+        const panel = document.getElementById('start-highscores-panel');
+        renderHighScoreList('start-highscores-list', loadHighScores());
+        panel.classList.toggle('hidden');
+      });
+
+      document.getElementById('btn-toggle-sound').addEventListener('click', e => {
+        const isOn = sound.toggle();
+        e.currentTarget.textContent = `Sound FX: ${isOn ? 'ON' : 'OFF'}`;
+      });
+
+      document.getElementById('btn-confirm-engrave').addEventListener('click', () => {
+        if (!GAME.selectedRuneOption || !GAME.selectedTargetFace) return;
+        GAME.die.faces[GAME.selectedTargetFace] = GAME.selectedRuneOption;
+        GAME.die.updateFaceTexture(GAME.selectedTargetFace);
+        GAME.totalRunesForged++;
+        GAME.runesTowardUpgrade = 0;
+        GAME.runesNeeded = Math.min(6, 3 + Math.floor(GAME.totalRunesForged / 2));
+
+        // Grant a small celebratory heal when forging a rune
+        GAME.wizard.hp = Math.min(GAME.wizard.maxHp, GAME.wizard.hp + 15);
+        sound.playRunePickup();
+        spawnBurstParticles(GAME.wizard.pos, RUNE_TYPES[GAME.selectedRuneOption].hex, 26, 1.0);
+
+        document.getElementById('screen-upgrade').classList.add('hidden');
+        GAME.mode = 'PLAYING';
+        renderDieFacesStrip();
+        updateHUD();
+      });
+
+      // =========================================================================
+      // 13. MAIN SIMULATION & RENDER LOOP (60fps Responsive)
+      // =========================================================================
+      let lastTime = performance.now();
+
+      function updateSimulation(dt) {
+        // Gentle dust motes drift in all modes
+        const posAttr = dustGeo.attributes.position;
+        for (let i = 0; i < dustCount; i++) {
+          let y = posAttr.getY(i) + dt * 0.22;
+          if (y > 8.5) y = 0.5;
+          posAttr.setY(i, y);
+        }
+        posAttr.needsUpdate = true;
+
+        // Scenic diorama orbit on Start Screen
+        if (GAME.mode === 'START') {
+          const t = performance.now() * 0.00035;
+          camera.position.set(Math.sin(t) * 18.5, 16.5, Math.cos(t) * 18.5);
+          camera.lookAt(0, 0.4, 0);
+          aimVisuals.reticle.visible = false;
+          aimVisuals.arcDots.forEach(d => (d.visible = false));
+          GAME.die.update(dt, GAME.wizard.pos, null, () => {});
+          return;
+        }
+
+        if (GAME.mode !== 'PLAYING') return;
+
+        // Hit-stop freeze frames for juicy impacts
+        if (GAME.hitStopTimer > 0) {
+          GAME.hitStopTimer -= dt;
+          return;
+        }
+
+        // Combo decay
+        if (GAME.combo > 1) {
+          GAME.comboTimer -= dt;
+          if (GAME.comboTimer <= 0) {
+            GAME.combo = 1;
+            updateHUD();
+          }
+        }
+
+        // 1. Move Wizard Miniature
+        const move = new THREE.Vector3(0, 0, 0);
+        if (keys['KeyW'] || keys['ArrowUp']) move.z -= 1;
+        if (keys['KeyS'] || keys['ArrowDown']) move.z += 1;
+        if (keys['KeyA'] || keys['ArrowLeft']) move.x -= 1;
+        if (keys['KeyD'] || keys['ArrowRight']) move.x += 1;
+        if (joystickVec.lengthSq() > 0.01) {
+          move.x += joystickVec.x;
+          move.z += joystickVec.y;
+          GAME.wizard.hasCustomPointerAim = false;
+        }
+
+        if (move.lengthSq() > 0.001) {
+          move.normalize();
+          GAME.wizard.pos.addScaledVector(move, GAME.wizard.speed * dt);
+          if (!GAME.wizard.hasCustomPointerAim) {
+            GAME.wizard.aimDir.copy(move);
+          }
+        }
+
+        // Clamp Wizard inside Carved Oak Board
+        const wizLimit = BOARD_HALF - 0.85;
+        GAME.wizard.pos.x = Math.max(-wizLimit, Math.min(wizLimit, GAME.wizard.pos.x));
+        GAME.wizard.pos.z = Math.max(-wizLimit, Math.min(wizLimit, GAME.wizard.pos.z));
+
+        // Keep aimPoint synced when not using mouse cursor
+        if (!GAME.wizard.hasCustomPointerAim) {
+          autoAimNearestEnemy();
+        } else {
+          const dir = GAME.wizard.aimPoint.clone().sub(GAME.wizard.pos);
+          dir.y = 0;
+          if (dir.lengthSq() > 0.01) GAME.wizard.aimDir.copy(dir.normalize());
+        }
+
+        // Update Wizard Mesh & Aim Trajectory Arc
+        GAME.wizard.mesh.position.copy(GAME.wizard.pos);
+        const targetAngle = Math.atan2(GAME.wizard.aimDir.x, GAME.wizard.aimDir.z);
+        GAME.wizard.mesh.rotation.y = targetAngle;
+        if (move.lengthSq() > 0.001) {
+          GAME.wizard.mesh.position.y = Math.abs(Math.sin(performance.now() * 0.014)) * 0.14;
+        } else {
+          GAME.wizard.mesh.position.y = 0;
+        }
+
+        // Update Aim Reticle & Dotted Trajectory Arc
+        const showAim = GAME.die.state === 'held';
+        aimVisuals.reticle.visible = showAim;
+        if (showAim) {
+          aimVisuals.reticle.position.set(GAME.wizard.aimPoint.x, 0, GAME.wizard.aimPoint.z);
+          const retPulse = 1.0 + Math.sin(performance.now() * 0.012) * 0.12;
+          aimVisuals.outerRing.scale.setScalar(retPulse);
+
+          const startArc = GAME.wizard.pos.clone().add(new THREE.Vector3(0, 1.45, 0));
+          const endArc = GAME.wizard.aimPoint.clone();
+          for (let i = 0; i < aimVisuals.arcDots.length; i++) {
+            const dot = aimVisuals.arcDots[i];
+            dot.visible = true;
+            const t = (i + 1) / (aimVisuals.arcDots.length + 1);
+            dot.position.lerpVectors(startArc, endArc, t);
+            dot.position.y += Math.sin(t * Math.PI) * 1.45;
+          }
+        } else {
+          aimVisuals.arcDots.forEach(d => (d.visible = false));
+        }
+
+        if (GAME.wizard.invulnTimer > 0) {
+          GAME.wizard.invulnTimer -= dt;
+          GAME.wizard.mesh.visible = Math.floor(GAME.wizard.invulnTimer * 18) % 2 === 0;
+        } else {
+          GAME.wizard.mesh.visible = true;
+        }
+
+        // 2. Update Giant Resin Die Physics (Stage 1 Bounce Impact + Stage 2 Settle Detonation)
+        GAME.die.update(
+          dt,
+          GAME.wizard.pos,
+          (bouncePos, impactVel) => {
+            handleDieKineticImpact(bouncePos, impactVel);
+          },
+          (faceNum, runeId, impactPos) => {
+            resolveDieBlast(faceNum, runeId, impactPos);
+          }
+        );
+
+        // 3. Update Enemy Miniatures, Direct Mid-Roll Collisions, Hit Flash & Floating HP Bars
+        for (let i = GAME.enemies.length - 1; i >= 0; i--) {
+          const en = GAME.enemies[i];
+
+          if (en.bounceHitCooldown > 0) en.bounceHitCooldown -= dt;
+
+          // White hit-flash & squash-recoil recovery
+          if (en.flashTimer > 0) {
+            en.flashTimer -= dt;
+            if (en.flashTimer <= 0) {
+              setEnemyWhiteFlash(en, false);
+            }
+          }
+          if (en.recoilScale > 1.0) {
+            en.recoilScale = Math.max(1.0, en.recoilScale - dt * 2.4);
+          }
+
+          // Topple defeat animation
+          if (en.toppleTimer > 0) {
+            en.toppleTimer -= dt;
+            en.mesh.rotation.x += dt * 7.5;
+            en.mesh.position.y -= dt * 0.6;
+            if (en.toppleTimer <= 0) {
+              scene.remove(en.mesh);
+              if (en.hpBarEl) en.hpBarEl.remove();
+              GAME.enemies.splice(i, 1);
+            }
+            continue;
+          }
+
+          // Direct mid-roll collision between giant rolling die and enemy miniature!
+          if (GAME.die.state === 'rolling' && en.bounceHitCooldown <= 0 && GAME.die.pos.y <= 1.85) {
+            const dieDist = Math.hypot(en.pos.x - GAME.die.pos.x, en.pos.z - GAME.die.pos.z);
+            if (dieDist <= GAME.die.half + en.radius + 0.35) {
+              en.bounceHitCooldown = 0.28;
+              damageEnemy(en, 16, GAME.die.pos, '#fef08a');
+              spawnBurstParticles(en.pos, 0xfde047, 8, 0.65);
+              sound.playDiceClack(0.75);
+              triggerScreenShake(0.22, 0.14);
+              updateHUD();
+            }
+          }
+
+          // Knockback velocity decay
+          if (en.vel.lengthSq() > 0.01) {
+            en.pos.addScaledVector(en.vel, dt);
+            en.vel.multiplyScalar(Math.pow(0.06, dt));
+          }
+
+          // Move toward wizard if not frozen
+          if (en.freezeTimer > 0) {
+            en.freezeTimer -= dt;
+          } else {
+            const toWiz = GAME.wizard.pos.clone().sub(en.pos);
+            toWiz.y = 0;
+            const dist = toWiz.length();
+            if (dist > 0.1) {
+              toWiz.normalize();
+              en.pos.addScaledVector(toWiz, en.speed * dt);
+              en.mesh.rotation.y = Math.atan2(toWiz.x, toWiz.z);
+            }
+
+            // Melee attack check against Wizard
+            if (dist < en.radius + 0.68 && en.attackCooldown <= 0 && GAME.wizard.invulnTimer <= 0) {
+              const dmg = en.type === 'golem' ? 22 : 12;
+              GAME.wizard.hp = Math.max(0, GAME.wizard.hp - dmg);
+              GAME.wizard.invulnTimer = 0.85;
+              en.attackCooldown = 1.1;
+              sound.playHitSound();
+              triggerScreenShake(0.38, 0.25);
+              spawnFloatingText(GAME.wizard.pos, `-${dmg}`, '#f43f5e', 1.15);
+              updateHUD();
+
+              if (GAME.wizard.hp <= 0) {
+                triggerGameOver();
+                return;
+              }
+            }
+          }
+
+          if (en.attackCooldown > 0) en.attackCooldown -= dt;
+
+          // Keep enemies inside board walls
+          en.pos.x = Math.max(-wizLimit, Math.min(wizLimit, en.pos.x));
+          en.pos.z = Math.max(-wizLimit, Math.min(wizLimit, en.pos.z));
+          en.mesh.position.set(
+            en.pos.x,
+            en.freezeTimer > 0 ? 0 : Math.abs(Math.sin(performance.now() * 0.01 + i)) * 0.08,
+            en.pos.z
+          );
+          en.mesh.scale.set(en.recoilScale, 2.0 - en.recoilScale, en.recoilScale);
+
+          // Project 3D enemy head position to screen space for crisp floating HP bar
+          if (en.hpBarEl) {
+            const headPos = en.pos.clone();
+            headPos.y += en.type === 'golem' ? 2.05 : 1.58;
+            headPos.project(camera);
+            if (headPos.z > 1) {
+              en.hpBarEl.style.display = 'none';
+            } else {
+              en.hpBarEl.style.display = 'block';
+              const sx = (headPos.x * 0.5 + 0.5) * window.innerWidth;
+              const sy = (-(headPos.y * 0.5) + 0.5) * window.innerHeight;
+              en.hpBarEl.style.left = `${sx}px`;
+              en.hpBarEl.style.top = `${sy}px`;
+            }
+          }
+        }
+
+        // 4. Update Rune Drops & Magnetic Pickup
+        for (let i = GAME.runeDrops.length - 1; i >= 0; i--) {
+          const drop = GAME.runeDrops[i];
+          drop.age += dt;
+          drop.crystal.rotation.y += dt * 3.2;
+          drop.crystal.position.y = 0.55 + Math.sin(drop.age * 5) * 0.12;
+
+          const toWiz = GAME.wizard.pos.clone().sub(drop.pos);
+          toWiz.y = 0;
+          const dist = toWiz.length();
+
+          // Magnetic pull when wizard approaches
+          if (dist < 3.4) {
+            drop.pos.addScaledVector(toWiz.normalize(), dt * 7.5);
+            drop.mesh.position.copy(drop.pos);
+          }
+
+          if (dist < 0.95) {
+            sound.playRunePickup();
+            GAME.runesCollected++;
+            GAME.runesTowardUpgrade++;
+            GAME.score += 100 * GAME.combo;
+            spawnFloatingText(GAME.wizard.pos, '+RUNE', '#22d3ee', 1.05);
+            scene.remove(drop.mesh);
+            GAME.runeDrops.splice(i, 1);
+            updateHUD();
+
+            if (GAME.runesTowardUpgrade >= GAME.runesNeeded) {
+              openUpgradeModal();
+              return;
+            }
+          }
+        }
+
+        // 5. Update Particles & Shockwaves
+        for (let i = GAME.particles.length - 1; i >= 0; i--) {
+          const p = GAME.particles[i];
+          p.life -= dt;
+          p.vel.y -= 16 * dt;
+          p.mesh.position.addScaledVector(p.vel, dt);
+          p.mesh.rotation.x += dt * 8;
+          p.mesh.rotation.y += dt * 8;
+          const s = Math.max(0.01, p.life / p.maxLife);
+          p.mesh.scale.setScalar(s);
+          if (p.life <= 0) {
+            scene.remove(p.mesh);
+            p.mesh.material.dispose();
+            GAME.particles.splice(i, 1);
+          }
+        }
+
+        for (let i = GAME.shockwaves.length - 1; i >= 0; i--) {
+          const sw = GAME.shockwaves[i];
+          sw.life -= dt;
+          const progress = 1 - sw.life / sw.maxLife;
+          const scale = 0.4 + progress * (sw.maxRadius * 1.9);
+          sw.mesh.scale.setScalar(scale);
+          sw.mesh.material.opacity = (1 - progress) * 0.85;
+          if (sw.life <= 0) {
+            scene.remove(sw.mesh);
+            sw.mesh.material.dispose();
+            GAME.shockwaves.splice(i, 1);
+          }
+        }
+
+        // 6. Wave Clear Progression
+        if (GAME.enemies.length === 0) {
+          GAME.waveClearDelay += dt;
+          if (GAME.waveClearDelay >= 1.1) {
+            GAME.waveClearDelay = 0;
+            GAME.wave++;
+            GAME.score += GAME.wave * 250;
+            spawnFloatingText(GAME.wizard.pos, `WAVE ${GAME.wave}!`, '#fde047', 1.35);
+            spawnWaveEnemies(GAME.wave);
+            updateHUD();
+          }
+        }
+
+        // 7. Smooth Camera Follow + Screen Shake
+        const desiredCam = new THREE.Vector3(
+          GAME.wizard.pos.x * 0.35 + baseCameraOffset.x,
+          baseCameraOffset.y,
+          GAME.wizard.pos.z * 0.35 + baseCameraOffset.z
+        );
+        camera.position.lerp(desiredCam, 1 - Math.exp(-dt * 6));
+
+        if (GAME.shakeTime > 0) {
+          GAME.shakeTime -= dt;
+          const mag = GAME.shakeIntensity * (GAME.shakeTime / 0.3);
+          camera.position.x += (Math.random() - 0.5) * mag;
+          camera.position.y += (Math.random() - 0.5) * mag;
+          camera.position.z += (Math.random() - 0.5) * mag;
+        } else {
+          GAME.shakeIntensity = 0;
+        }
+
+        camera.lookAt(GAME.wizard.pos.x * 0.25, 0.2, GAME.wizard.pos.z * 0.25);
+      }
+
+      function animate(now) {
+        requestAnimationFrame(animate);
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+
+        updateSimulation(dt);
+        renderer.render(scene, camera);
+      }
+
+      // Responsive Resize Handler
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        // Pull camera slightly further back on portrait mobile screens so full board is visible
+        const aspectAdjust = camera.aspect < 0.85 ? (0.85 / camera.aspect) * 0.85 : 1.0;
+        baseCameraOffset.set(0, 18.5 * Math.min(1.45, aspectAdjust), 16.5 * Math.min(1.45, aspectAdjust));
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // Trigger initial aspect adjustment & start loop on window load
+      window.addEventListener('load', () => {
+        window.dispatchEvent(new Event('resize'));
+        renderHighScoreList('start-highscores-list', loadHighScores());
+        lastTime = performance.now();
+        requestAnimationFrame(animate);
+      });
+    })();
+  </script>
+</body>
+</html>
